@@ -1,127 +1,264 @@
 # Concurrency Behavior
 
-## How Requests Are Handled
+## Two-Level Cache Architecture
 
-### Cache Hit (Instant Response)
+The system uses two independent caches to optimize performance and avoid duplicate AI analysis:
+
+### Level 1: Request Cache
+**Storage:** `cache_data/requests/YYYY-MM-DD_locale.json`  
+**Key:** `date + locale`  
+**Contains:** Metadata about a specific request
+- Date
+- Locale
+- Image ID (extracted from Bing)
+- Image URLs (all sizes)
+
+### Level 2: Analysis Cache
+**Storage:** `cache_data/analysis/image_hash.json`  
+**Key:** `image_hash` (SHA256 hash of image data)  
+**Contains:** AI analysis results
+- Image Hash (64-character hex string)
+- Named colors (highlight, primary, secondary, etc.)
+
+## Why Two Caches?
+
+**Problem:** Bing often serves the same wallpaper image to multiple locales on the same day, but with different metadata IDs.
+
+Example:
+- `en-US` gets image ID: `OHR.Example_EN-US123456`
+- `ja-JP` gets image ID: `OHR.Example_JA-JP123456`
+- But they're the **exact same image!**
+
+**Solution:** Hash the actual image data to detect duplicates.
+</text>
+
+<old_text line=30>
+**Without shared analysis:**
 ```
-Request → Check Cache → HIT → Return (< 1ms)
+en-US request → Download image A → AI analysis (30s) → Cache
+ja-JP request → Download image A → AI analysis (30s) → Cache  ❌ Duplicate work!
 ```
 
-HTTP connection stays open for < 1ms, returns immediately.
-
-### Cache Miss (First Request)
-
+**With two-level cache:**
 ```
-Request → Check Cache → MISS → Acquire Lock → Download → AI Analysis → Cache → Return
-                                      ↓
-                                  (7-35s)
+en-US request → Download metadata → Image ID: "ABC123" → AI analysis (30s) → Cache by image ID
+ja-JP request → Download metadata → Image ID: "ABC123" → Cache hit! (instant) ✓
 ```
 
-**Important:** The HTTP connection stays open the entire time. The client waits for the complete response.
-
-### Concurrent Requests (Same Date)
-
-When multiple requests come in for the same date+locale:
-
+**Without shared analysis:**
 ```
-Time    Request A (en-US)        Request B (en-US)        Request C (ja-JP)
-────────────────────────────────────────────────────────────────────────────────────
-T0      Cache MISS
-T1      Acquire lock ✓
-T2      Downloading...           Cache MISS              Cache MISS
-T3      Downloading...           Try lock (BLOCKED)      Acquire lock ✓ (different key)
-T4      AI analyzing...          (waiting...)            Downloading...
-T5      AI analyzing...          (waiting...)            AI analyzing...
-T10     Cache & unlock
-T11                              Lock acquired ✓
-T12                              Cache HIT!
-T13                              Return instantly                       Cache & unlock
+en-US request → Download image A → AI analysis (30s) → Cache
+ja-JP request → Download image A → AI analysis (30s) → Cache  ❌ Duplicate work!
 ```
 
-**Key Points:**
+**With two-level cache:**
+```
+en-US request → Download metadata → Image ID: "ABC123" → AI analysis (30s) → Cache by image ID
+ja-JP request → Download metadata → Image ID: "ABC123" → Cache hit! (instant) ✓
+```
 
-1. **Request A**: Does all the work, connection open for ~10s
-2. **Request B**: Same date+locale, blocks on mutex, waits for A to finish, then gets cached result
-3. **Request C**: Different locale (or date) = different mutex = no blocking
+## Request Flow
 
-## Per-Date+Locale Locking
+### Fast Path (Full Cache Hit)
+```
+1. Request: /api/colors?date=2024-01-15&locale=en-US
+2. Check request cache → HIT
+3. Get image_hash from request entry
+4. Check analysis cache by image_hash → HIT
+5. Return colors + image URLs (< 1ms)
+```
 
-Each date+locale combination gets its own mutex:
+### Image Hash Hit (Analysis exists, different locale)
+```
+1. Request: /api/colors?date=2024-01-15&locale=ja-JP
+2. Check request cache → MISS (never requested ja-JP before)
+3. Download wallpaper image
+4. Generate image hash
+5. Check analysis cache by image_hash → HIT (same image as en-US!)
+6. Cache request metadata
+7. Return colors + image URLs (~2s, no AI needed)
+```
 
+### Cold Start (Full Cache Miss)
+```
+1. Request: /api/colors?date=2024-01-15&locale=en-US
+2. Check request cache → MISS
+3. Download wallpaper image (~2s)
+4. Generate image hash (SHA256)
+5. Check analysis cache by image_hash → MISS
+6. Acquire mutex on image_hash
+7. Double-check analysis cache (another goroutine might have finished)
+8. AI analysis (~5-30s)
+9. Cache analysis by image_hash
+10. Cache request metadata
+11. Release mutex
+12. Return colors + image URLs (~7-35s)
+```
+
+## Locking Strategy
+
+### Key Insight: Lock on Image Hash, Not Metadata
+
+**Why hash instead of Bing's image ID?**
+- Bing returns different IDs for same image across locales
+- `OHR.Example_EN-US123` vs `OHR.Example_JA-JP456` → same image!
+- Hash detects identical image content
+
+**Locking approach:**
+```
+Mutex key: image_hash (SHA256 of image data)
+Benefit: Only blocks requests analyzing the EXACT SAME image
+```
+
+### Example: Parallel Requests
+
+**Scenario 1: Same image, different locales (different Bing IDs)**
+```
+Time  en-US                        ja-JP
+────────────────────────────────────────────────────────────
+T0    Download image               
+T1    Hash = "abc123..."
+T2    Analysis cache MISS
+T3    Acquire mutex(abc123) ✓
+T4    AI analyzing...              Download image
+T5    AI analyzing...              Hash = "abc123..." (SAME!)
+T6    AI analyzing...              Analysis cache MISS
+T7    AI analyzing...              Try mutex(abc123) → BLOCKED
+T10   Cache analysis
+T11   Release mutex
+T12                                 Mutex acquired!
+T13                                 Double-check → CACHE HIT ✓
+T14                                 Return (instant)
+```
+
+**Scenario 2: Different images (truly different content)**
+```
+Time  en-US                        ja-JP (different image)
+────────────────────────────────────────────────────────────
+T0    Download image               Download image
+T1    Hash = "abc123..."           Hash = "xyz789..." (DIFFERENT!)
+T2    Acquire mutex(abc123) ✓      Acquire mutex(xyz789) ✓
+T3    AI analyzing...              AI analyzing...
+T4    Both process in parallel (no blocking!) ✓
+```
+
+## Concurrency Guarantees
+
+### Per-Image-Hash Mutex
+Each unique image hash gets its own mutex:
 ```go
 processing map[string]*sync.Mutex
 
-"2024-01-15_en-US" → Mutex A
-"2024-01-15_ja-JP" → Mutex B
-"2024-01-16_en-US" → Mutex C
+"abc123...def" → Mutex A  (en-US and ja-JP share this if same image)
+"xyz789...ghi" → Mutex B  (different image)
 ```
 
-Requests for different dates OR different locales never block each other.
-
-## Double-Check Pattern
-
+### Double-Check Pattern
 ```go
-cacheKey := getCacheKey(date, locale)
+// Download image and generate hash
+imageData := downloadImage()
+imageHash := sha256(imageData)
 
 // First check (before lock)
-if cached := cache.Get(cacheKey); cached != nil {
-    return cached  // Fast path
+if analysis := analysisCache.Get(imageHash); analysis != nil {
+    return analysis  // Fast path
 }
 
 // Acquire lock
-lock(cacheKey)
-defer unlock(cacheKey)
+mutex := analysisCache.GetMutex(imageHash)
+mutex.Lock()
+defer mutex.Unlock()
 
 // Second check (after lock)
-if cached := cache.Get(cacheKey); cached != nil {
-    return cached  // Another request finished while we waited
+if analysis := analysisCache.Get(imageHash); analysis != nil {
+    return analysis  // Another goroutine finished while we waited
 }
 
-// Do the work
-download()
-analyze()
+// Do the expensive work
+analyze(imageData)
 cache()
 ```
 
-This ensures only one request does the expensive work, even with concurrent requests.
+This ensures only ONE goroutine analyzes each unique image, even with hundreds of concurrent requests.
 
-## Test Results
+## Performance Characteristics
 
-**Same date+locale, concurrent requests:**
-- First request: ~10 seconds (does the work)
-- Second request: ~10 seconds (waits) + instant (cached result)
-- Result: Only 1 API call made ✓
+### Cache Patterns
 
-**Same date, different locales:**
-- Both requests: ~10 seconds each (parallel)
-- No blocking between them ✓
-- Result: 2 API calls (different wallpapers) ✓
+| Request Type | Request Cache | Analysis Cache | Time | AI Calls |
+|--------------|---------------|----------------|------|----------|
+| **Full hit** | HIT | HIT | <1ms | 0 |
+| **Hash hit** | MISS | HIT (via hash) | ~2s | 0 |
+| **Cold start** | MISS | MISS | ~7-35s | 1 |
+| **Concurrent (same image)** | MISS | MISS → HIT | ~7-35s (first), instant (rest) | 1 |
 
-**Different dates:**
-- Both requests: ~10 seconds each (parallel)
-- No blocking between them ✓
-- Result: 2 API calls (expected) ✓
+### Real-World Example
 
-**Cache hits:**
-- Always instant (< 1ms)
-- Never blocked ✓
+```
+09:00 - User requests en-US wallpaper
+        → Download + AI analysis (30s)
+        → Cache by image_id
+
+09:30 - User requests ja-JP wallpaper (same image, different Bing ID!)
+        → Download image (2s)
+        → Hash matches! Analysis cache HIT
+        → No AI call needed ✓
+
+09:45 - User requests de-DE wallpaper (same image, different Bing ID!)
+        → Download image (2s)
+        → Hash matches! Analysis cache HIT
+        → No AI call needed ✓
+
+Result: 3 requests, only 1 AI analysis (30s + 2s + 2s = 34s total vs 90s without optimization)
+```
 
 ## HTTP Connection Behavior
 
-Go's `net/http` server handles each request in its own goroutine:
+Each request runs in its own goroutine with an open HTTP connection:
 
 ```
-Client A ─┬─ Goroutine 1 → blocks on mutex → waits
-Client B ─┼─ Goroutine 2 → returns cached instantly
-Client C ─┴─ Goroutine 3 → downloads different date
+Client A (en-US) ──┬── Goroutine 1 → 30s (AI analysis)
+Client B (ja-JP) ──┼── Goroutine 2 → 2s  (metadata hit)
+Client C (de-DE) ──┴── Goroutine 3 → 2s  (metadata hit)
 ```
 
-All connections stay alive until their respective goroutines complete.
+- Goroutine 1 holds mutex on image_id, does analysis
+- Goroutine 2 & 3 don't need mutex (cache hit before reaching lock)
+- All connections stay open until their goroutine completes
 
-## Why This Works
+## File Structure
 
-1. **No duplicate work**: Mutex prevents multiple AI API calls for same date+locale
-2. **No blocking unrelated requests**: Each date+locale combination has its own mutex
-3. **Locale isolation**: Different locales for same date fetch different wallpapers in parallel
-4. **Client compatibility**: Standard HTTP - clients just wait for response
-5. **Memory efficient**: Only active date+locale combinations have mutexes in memory
+```
+cache_data/
+├── requests/
+│   ├── 2024-01-15_en-US.json  → references hash "abc123...def"
+│   ├── 2024-01-15_ja-JP.json  → references hash "abc123...def" (same!)
+│   └── 2024-01-15_de-DE.json  → references hash "abc123...def" (same!)
+└── analysis/
+    └── abc123def456789012345678901234567890123456789012345678901234.json
+        ↑ Shared by all above! (SHA256 hash of image data)
+```
+
+Request files are small (metadata only). Analysis files are named by image content hash and contain the expensive AI results. Same image = same hash = same file!
+
+## Benefits
+
+1. **Content-based deduplication** - Identical images detected even with different Bing IDs
+2. **No duplicate AI analysis** - Same image analyzed once regardless of how many locales request it
+3. **Optimal locking** - Only blocks when analyzing the exact same image (by content)
+4. **Fast hash hits** - Different locales get instant colors if image content already analyzed
+5. **Memory efficient** - Analysis results shared across all requests with same image
+6. **Disk persisted** - Both caches survive restarts
+7. **Inspectable** - JSON files can be examined/debugged easily
+8. **SHA256 security** - Cryptographically secure hash prevents collisions
+
+## Testing
+
+Our test suite verifies:
+- ✅ Same image hash blocks concurrent analysis attempts
+- ✅ Different image hashes process in parallel
+- ✅ Multiple locales can share analysis results via hash matching
+- ✅ Image hashing is deterministic and collision-resistant
+- ✅ Request cache and analysis cache stay synchronized
+- ✅ Double-check pattern prevents race conditions
+- ✅ File persistence works across cache restarts

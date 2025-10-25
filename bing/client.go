@@ -21,11 +21,13 @@ type Client struct {
 
 // WallpaperInfo contains metadata about a Bing wallpaper
 type WallpaperInfo struct {
-	URL       string
-	ImageURLs map[string]string // Different size URLs
-	Title     string
-	Copyright string
-	Date      string
+	URL           string
+	ImageID       string            // Unique image identifier (e.g., "OHR.MartimoaapaFinland_EN-US3685817058")
+	ImageURLs     map[string]string // Different size URLs
+	Title         string
+	Copyright     string
+	CopyrightLink string
+	Date          string
 }
 
 // bingAPIResponse represents the JSON response from Bing's API
@@ -121,13 +123,29 @@ func (c *Client) GetWallpaperInfo(date string) (*WallpaperInfo, error) {
 		"800x600":   urlBase + "_800x600.jpg",   // SVGA (~93KB)
 	}
 
+	// Extract image ID from URLBase (e.g., "/th?id=OHR.ImageName_EN-US123456" -> "OHR.ImageName_EN-US123456")
+	imageID := extractImageID(image.URLBase)
+
 	return &WallpaperInfo{
-		URL:       imageURL,
-		ImageURLs: imageURLs,
-		Title:     image.Title,
-		Copyright: image.Copyright,
-		Date:      date,
+		URL:           imageURL,
+		ImageID:       imageID,
+		ImageURLs:     imageURLs,
+		Title:         image.Title,
+		Copyright:     image.Copyright,
+		CopyrightLink: image.CopyrightURL,
+		Date:          date,
 	}, nil
+}
+
+// extractImageID extracts the image ID from the URLBase
+// Example: "/th?id=OHR.MartimoaapaFinland_EN-US3685817058" -> "OHR.MartimoaapaFinland_EN-US3685817058"
+func extractImageID(urlBase string) string {
+	// URLBase format: "/th?id=<IMAGE_ID>"
+	const prefix = "/th?id="
+	if len(urlBase) > len(prefix) {
+		return urlBase[len(prefix):]
+	}
+	return urlBase
 }
 
 // DownloadWallpaper downloads the actual wallpaper image data

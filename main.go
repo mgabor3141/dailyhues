@@ -6,9 +6,9 @@ import (
 	"log"
 	"net/http"
 	"os"
-	"sync"
 	"time"
 
+	"github.com/joho/godotenv"
 	"github.com/mgabor3141/wallpaper-highlight/ai"
 	"github.com/mgabor3141/wallpaper-highlight/bing"
 	"github.com/mgabor3141/wallpaper-highlight/cache"
@@ -33,18 +33,14 @@ var allowedLocales = map[string]bool{
 	"ko-KR": true,
 }
 
-// getCacheKey generates a cache key from date and locale
-func getCacheKey(date, locale string) string {
-	return date + "_" + locale
-}
-
 // ColorTheme represents the response with extracted colors from a wallpaper
 type ColorTheme struct {
-	Date      string            `json:"date"`
-	Images    map[string]string `json:"images"`
-	Colors    map[string]string `json:"colors"`
-	CachedAt  string            `json:"cached_at"`
-	FromCache bool              `json:"from_cache"`
+	Date          string            `json:"date"`
+	Images        map[string]string `json:"images"`
+	Colors        map[string]string `json:"colors"`
+	Copyright     string            `json:"copyright"`
+	CopyrightLink string            `json:"copyright_link"`
+	CachedAt      string            `json:"cached_at"`
 }
 
 // ErrorResponse represents an API error
@@ -54,38 +50,47 @@ type ErrorResponse struct {
 
 // App holds the application dependencies
 type App struct {
-	cache       *cache.Cache
-	bingClient  *bing.Client
-	aiAnalyzer  *ai.Analyzer
-	processMu   sync.Mutex // Ensures only one analysis runs at a time per date
-	processing  map[string]*sync.Mutex
-	processingL sync.Mutex
+	requestCache  *cache.RequestCache
+	analysisCache *cache.AnalysisCache
+	bingClient    *bing.Client
+	aiAnalyzer    *ai.Analyzer
 }
 
 func main() {
+	// Load .env file if it exists (ignore error if file doesn't exist)
+	_ = godotenv.Load()
+
 	// Get OpenRouter API key from environment
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
 	if apiKey == "" {
 		log.Fatal("OPENROUTER_API_KEY environment variable is required")
 	}
 
-	// Initialize cache and load existing cache files
-	cacheInstance, err := cache.New("./cache_data")
+	// Initialize caches
+	requestCache, err := cache.NewRequestCache("./cache_data")
 	if err != nil {
-		log.Fatalf("Failed to initialize cache: %v", err)
+		log.Fatalf("Failed to initialize request cache: %v", err)
+	}
+
+	analysisCache, err := cache.NewAnalysisCache("./cache_data")
+	if err != nil {
+		log.Fatalf("Failed to initialize analysis cache: %v", err)
 	}
 
 	// Load all existing cache files into memory on startup
-	if err := cacheInstance.LoadAll(); err != nil {
-		log.Printf("Warning: Failed to load cache files: %v", err)
+	if err := requestCache.LoadAll(); err != nil {
+		log.Printf("Warning: Failed to load request cache: %v", err)
+	}
+	if err := analysisCache.LoadAll(); err != nil {
+		log.Printf("Warning: Failed to load analysis cache: %v", err)
 	}
 
 	// Initialize app
 	app := &App{
-		cache:      cacheInstance,
-		bingClient: bing.NewClient("en-US"),
-		aiAnalyzer: ai.NewAnalyzer(apiKey),
-		processing: make(map[string]*sync.Mutex),
+		requestCache:  requestCache,
+		analysisCache: analysisCache,
+		bingClient:    bing.NewClient("en-US"),
+		aiAnalyzer:    ai.NewAnalyzer(apiKey),
 	}
 
 	// Set up routes
@@ -164,56 +169,24 @@ func (app *App) handleGetColors(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Generate cache key from date and locale
-	cacheKey := getCacheKey(dateParam, locale)
-
-	// Check cache first
-	cached, err := app.cache.Get(cacheKey)
-	if err != nil {
-		log.Printf("Cache read error: %v", err)
-	}
-
-	if cached != nil {
-		// Cache hit! Return immediately
-		response := ColorTheme{
-			Date:      cached.Date,
-			Images:    cached.Images,
-			Colors:    cached.Colors,
-			CachedAt:  cached.CachedAt.Format(time.RFC3339),
-			FromCache: true,
+	// Step 1: Check request cache
+	if reqEntry := app.requestCache.Get(dateParam, locale); reqEntry != nil {
+		// Request cached, now check if we have the analysis
+		if analysisEntry := app.analysisCache.Get(reqEntry.ImageHash); analysisEntry != nil {
+			response := ColorTheme{
+				Date:          dateParam,
+				Images:        reqEntry.ImageURLs,
+				Colors:        analysisEntry.Colors,
+				Copyright:     reqEntry.Copyright,
+				CopyrightLink: reqEntry.CopyrightLink,
+				CachedAt:      time.Now().Format(time.RFC3339),
+			}
+			respondWithJSON(w, http.StatusOK, response)
+			return
 		}
-		respondWithJSON(w, http.StatusOK, response)
-		return
 	}
 
-	// Cache miss - need to process
-	// Get or create a mutex for this specific date+locale to prevent duplicate processing
-	dateMutex := app.getDateMutex(cacheKey)
-	dateMutex.Lock()
-	defer dateMutex.Unlock()
-
-	// Double-check cache after acquiring lock (another request might have completed)
-	cached, err = app.cache.Get(cacheKey)
-	if err != nil {
-		log.Printf("Cache read error: %v", err)
-	}
-
-	if cached != nil {
-		response := ColorTheme{
-			Date:      cached.Date,
-			Images:    cached.Images,
-			Colors:    cached.Colors,
-			CachedAt:  cached.CachedAt.Format(time.RFC3339),
-			FromCache: true,
-		}
-		respondWithJSON(w, http.StatusOK, response)
-		return
-	}
-
-	// Still not in cache, do the actual work
-	log.Printf("Processing wallpaper for date: %s", dateParam)
-
-	// Step 1: Download wallpaper from Bing
+	// Step 2: Download wallpaper metadata and image from Bing
 	app.bingClient.SetLocale(locale)
 	imageData, info, err := app.bingClient.GetWallpaper(dateParam)
 	if err != nil {
@@ -224,47 +197,94 @@ func (app *App) handleGetColors(w http.ResponseWriter, r *http.Request) {
 
 	log.Printf("Downloaded wallpaper: %s (%d bytes)", info.Title, len(imageData))
 
-	// Step 2: Analyze colors with AI
+	// Step 3: Generate image hash (this is our unique identifier)
+	imageHash := cache.HashImage(imageData)
+	log.Printf("Image hash: %s", imageHash)
+
+	// Step 4: Check analysis cache by image hash
+	if analysisEntry := app.analysisCache.Get(imageHash); analysisEntry != nil {
+		// Analysis exists! Just cache the request metadata and return
+		log.Printf("Analysis cache hit for image hash: %s", imageHash)
+
+		if err := app.requestCache.Set(dateParam, locale, imageHash, info.ImageURLs, info.Copyright, info.CopyrightLink); err != nil {
+			log.Printf("Failed to cache request: %v", err)
+		}
+
+		response := ColorTheme{
+			Date:          dateParam,
+			Images:        info.ImageURLs,
+			Colors:        analysisEntry.Colors,
+			Copyright:     info.Copyright,
+			CopyrightLink: info.CopyrightLink,
+			CachedAt:      time.Now().Format(time.RFC3339),
+		}
+		respondWithJSON(w, http.StatusOK, response)
+		return
+	}
+
+	// Step 5: Acquire mutex for this image hash (prevents duplicate analysis)
+	imageMutex := app.analysisCache.GetMutex(imageHash)
+	imageMutex.Lock()
+	defer imageMutex.Unlock()
+
+	// Step 6: Double-check analysis cache (another goroutine might have completed)
+	if analysisEntry := app.analysisCache.Get(imageHash); analysisEntry != nil {
+		log.Printf("Analysis completed by another request for image hash: %s", imageHash)
+
+		if err := app.requestCache.Set(dateParam, locale, imageHash, info.ImageURLs, info.Copyright, info.CopyrightLink); err != nil {
+			log.Printf("Failed to cache request: %v", err)
+		}
+
+		response := ColorTheme{
+			Date:          dateParam,
+			Images:        info.ImageURLs,
+			Colors:        analysisEntry.Colors,
+			Copyright:     info.Copyright,
+			CopyrightLink: info.CopyrightLink,
+			CachedAt:      time.Now().Format(time.RFC3339),
+		}
+		respondWithJSON(w, http.StatusOK, response)
+		return
+	}
+
+	// Step 7: Analyze colors with AI (image already downloaded)
+	log.Printf("Starting AI analysis for image hash: %s", imageHash)
 	colors, err := app.aiAnalyzer.AnalyzeColors(imageData)
+	if err != nil {
+		log.Printf("Failed to download wallpaper: %v", err)
+		respondWithError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to download wallpaper: %v", err))
+		return
+	}
+
 	if err != nil {
 		log.Printf("Failed to analyze colors: %v", err)
 		respondWithError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to analyze colors: %v", err))
 		return
 	}
 
-	log.Printf("Extracted colors: %v", colors)
+	log.Printf("Extracted colors for image hash %s: %v", imageHash, colors)
 
-	// Step 3: Store in cache
-	if err := app.cache.Set(cacheKey, info.ImageURLs, colors); err != nil {
-		log.Printf("Failed to cache result: %v", err)
-		// Don't fail the request if caching fails
+	// Step 8: Store analysis in cache (shared across all locales with this image)
+	if err := app.analysisCache.Set(imageHash, colors); err != nil {
+		log.Printf("Failed to cache analysis: %v", err)
 	}
 
-	// Step 4: Return response
+	// Step 9: Store request metadata in cache
+	if err := app.requestCache.Set(dateParam, locale, imageHash, info.ImageURLs, info.Copyright, info.CopyrightLink); err != nil {
+		log.Printf("Failed to cache request: %v", err)
+	}
+
+	// Step 10: Return response
 	response := ColorTheme{
-		Date:      dateParam,
-		Images:    info.ImageURLs,
-		Colors:    colors,
-		CachedAt:  time.Now().Format(time.RFC3339),
-		FromCache: false,
+		Date:          dateParam,
+		Images:        info.ImageURLs,
+		Colors:        colors,
+		Copyright:     info.Copyright,
+		CopyrightLink: info.CopyrightLink,
+		CachedAt:      time.Now().Format(time.RFC3339),
 	}
 
 	respondWithJSON(w, http.StatusOK, response)
-}
-
-// getDateMutex gets or creates a mutex for a specific cache key (date + locale)
-// This ensures only one goroutine processes a given date+locale combination at a time
-func (app *App) getDateMutex(cacheKey string) *sync.Mutex {
-	app.processingL.Lock()
-	defer app.processingL.Unlock()
-
-	if mu, exists := app.processing[cacheKey]; exists {
-		return mu
-	}
-
-	mu := &sync.Mutex{}
-	app.processing[cacheKey] = mu
-	return mu
 }
 
 // respondWithJSON is a helper to send JSON responses

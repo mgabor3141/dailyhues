@@ -4,6 +4,18 @@ Get AI-extracted color palettes from Bing's daily wallpapers.
 
 ## Setup
 
+1. **Add your API key to `.env` file:**
+```bash
+# Edit .env and add your OpenRouter API key
+OPENROUTER_API_KEY=your_actual_api_key_here
+```
+
+2. **Run the server:**
+```bash
+go run main.go
+```
+
+The app automatically loads `.env` on startup. Alternatively, you can export the variable:
 ```bash
 export OPENROUTER_API_KEY="your-key-here"
 go run main.go
@@ -39,8 +51,9 @@ Both parameters are optional. `date` defaults to today, `locale` defaults to `en
     "surface": "#f5f5f5",
     "text": "#212121"
   },
-  "cached_at": "2024-01-15T10:30:00Z",
-  "from_cache": true
+  "copyright": "Aerial view of peatland in Martimoaapa Mire Reserve, Finland (© romikatarina/Shutterstock)",
+  "copyright_link": "https://www.bing.com/search?q=Martimoaapa+Finland&form=hpcapt",
+  "cached_at": "2024-01-15T10:30:00Z"
 }
 ```
 
