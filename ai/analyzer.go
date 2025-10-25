@@ -17,7 +17,7 @@ import (
 
 const (
 	openRouterURL = "https://openrouter.ai/api/v1/chat/completions"
-	claudeModel   = "anthropic/claude-3.5-sonnet:beta" // Claude Sonnet with extended thinking
+	claudeModel   = "anthropic/claude-sonnet-4.5" // Claude Sonnet with extended thinking
 )
 
 // Analyzer handles AI-powered color analysis of images
@@ -48,15 +48,13 @@ type message struct {
 }
 
 type contentPart struct {
-	Type   string       `json:"type"`
-	Text   string       `json:"text,omitempty"`
-	Source *imageSource `json:"source,omitempty"`
+	Type     string    `json:"type"`
+	Text     string    `json:"text,omitempty"`
+	ImageURL *imageURL `json:"image_url,omitempty"`
 }
 
-type imageSource struct {
-	Type      string `json:"type"`
-	MediaType string `json:"media_type"`
-	Data      string `json:"data"`
+type imageURL struct {
+	URL string `json:"url"`
 }
 
 // openRouterResponse represents the response from OpenRouter API
@@ -92,11 +90,9 @@ func (a *Analyzer) AnalyzeColors(imageData []byte) (map[string]string, error) {
 				Role: "user",
 				Content: []contentPart{
 					{
-						Type: "image",
-						Source: &imageSource{
-							Type:      "base64",
-							MediaType: "image/jpeg",
-							Data:      base64Image,
+						Type: "image_url",
+						ImageURL: &imageURL{
+							URL: "data:image/jpeg;base64," + base64Image,
 						},
 					},
 					{
