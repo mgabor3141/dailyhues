@@ -8,3 +8,27 @@ devenv.local.yaml
 
 # pre-commit
 .pre-commit-config.yaml
+
+# Go
+bin/
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+go.work
+
+# Application
+cache_data/
+*.log
+.env
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
