@@ -231,6 +231,7 @@ func TestConcurrency_TwoLevelCacheSystem(t *testing.T) {
 	// Simulate: Same image used by both en-US and ja-JP
 	imageURLs := map[string]string{"1920x1080": "https://bing.com/image.jpg"}
 	colors := map[string]string{"highlight": "#FF0000", "primary": "#00FF00"}
+	title := "Test Title"
 	copyright := "Test Copyright © Photographer"
 	copyrightLink := "https://example.com/test"
 
@@ -241,13 +242,13 @@ func TestConcurrency_TwoLevelCacheSystem(t *testing.T) {
 	}
 
 	// Store request metadata for en-US
-	err = requestCache.Set(date, "en-US", imageHash, imageURLs, copyright, copyrightLink)
+	err = requestCache.Set(date, "en-US", imageHash, imageURLs, title, copyright, copyrightLink)
 	if err != nil {
 		t.Fatalf("Failed to set en-US request: %v", err)
 	}
 
 	// Store request metadata for ja-JP (same image hash!)
-	err = requestCache.Set(date, "ja-JP", imageHash, imageURLs, copyright, copyrightLink)
+	err = requestCache.Set(date, "ja-JP", imageHash, imageURLs, title, copyright, copyrightLink)
 	if err != nil {
 		t.Fatalf("Failed to set ja-JP request: %v", err)
 	}

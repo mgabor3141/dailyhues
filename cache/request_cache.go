@@ -15,6 +15,7 @@ type RequestEntry struct {
 	Locale        string            `json:"locale"`
 	ImageHash     string            `json:"image_hash"`
 	ImageURLs     map[string]string `json:"image_urls"`
+	Title         string            `json:"title"`
 	Copyright     string            `json:"copyright"`
 	CopyrightLink string            `json:"copyright_link"`
 }
@@ -54,7 +55,7 @@ func (c *RequestCache) Get(date, locale string) *RequestEntry {
 }
 
 // Set stores a request entry and persists to disk
-func (c *RequestCache) Set(date, locale, imageHash string, imageURLs map[string]string, copyright, copyrightLink string) error {
+func (c *RequestCache) Set(date, locale, imageHash string, imageURLs map[string]string, title, copyright, copyrightLink string) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
@@ -63,6 +64,7 @@ func (c *RequestCache) Set(date, locale, imageHash string, imageURLs map[string]
 		Locale:        locale,
 		ImageHash:     imageHash,
 		ImageURLs:     imageURLs,
+		Title:         title,
 		Copyright:     copyright,
 		CopyrightLink: copyrightLink,
 	}

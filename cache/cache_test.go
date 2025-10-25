@@ -35,11 +35,12 @@ func TestRequestCache_SetAndGet(t *testing.T) {
 		"1920x1080": "https://bing.com/image_1920x1080.jpg",
 		"1280x720":  "https://bing.com/image_1280x720.jpg",
 	}
+	title := "Test Title"
 	copyright := "Test Copyright © Photographer"
 	copyrightLink := "https://example.com/copyright"
 
 	// Set cache
-	err = cache.Set(date, locale, imageHash, imageURLs, copyright, copyrightLink)
+	err = cache.Set(date, locale, imageHash, imageURLs, title, copyright, copyrightLink)
 	if err != nil {
 		t.Fatalf("Failed to set cache: %v", err)
 	}
@@ -95,10 +96,11 @@ func TestRequestCache_Persistence(t *testing.T) {
 	locale := "ja-JP"
 	imageHash := "def789ghi012345678901234567890123456789012345678901234567890"
 	imageURLs := map[string]string{"1920x1080": "https://bing.com/img.jpg"}
+	title := "Test Title"
 	copyright := "Persistent Test Copyright"
 	copyrightLink := "https://example.com/persist"
 
-	err = cache1.Set(date, locale, imageHash, imageURLs, copyright, copyrightLink)
+	err = cache1.Set(date, locale, imageHash, imageURLs, title, copyright, copyrightLink)
 	if err != nil {
 		t.Fatalf("Failed to set cache: %v", err)
 	}
@@ -149,11 +151,12 @@ func TestRequestCache_ConcurrentAccess(t *testing.T) {
 				locale := "en-US"
 				imageHash := "abc123test456789012345678901234567890123456789012345678901"
 				imageURLs := map[string]string{"1920x1080": "https://bing.com/img.jpg"}
+				title := "Test Title"
 				copyright := "Concurrent Test Copyright"
 				copyrightLink := "https://example.com/concurrent"
 
 				// Write
-				err := cache.Set(date, locale, imageHash, imageURLs, copyright, copyrightLink)
+				err := cache.Set(date, locale, imageHash, imageURLs, title, copyright, copyrightLink)
 				if err != nil {
 					t.Errorf("Goroutine %d: Failed to set cache: %v", id, err)
 					return
@@ -393,15 +396,16 @@ func TestAnalysisCache_SharedImageAcrossLocales(t *testing.T) {
 
 	// Store request metadata for en-US
 	imageURLs := map[string]string{"1920x1080": "https://bing.com/img.jpg"}
+	title := "Shared Image Title"
 	copyright := "Shared Image Copyright"
 	copyrightLink := "https://example.com/shared"
-	err = requestCache.Set(date, "en-US", imageHash, imageURLs, copyright, copyrightLink)
+	err = requestCache.Set(date, "en-US", imageHash, imageURLs, title, copyright, copyrightLink)
 	if err != nil {
 		t.Fatalf("Failed to set en-US request: %v", err)
 	}
 
 	// Store request metadata for ja-JP (same image hash!)
-	err = requestCache.Set(date, "ja-JP", imageHash, imageURLs, copyright, copyrightLink)
+	err = requestCache.Set(date, "ja-JP", imageHash, imageURLs, title, copyright, copyrightLink)
 	if err != nil {
 		t.Fatalf("Failed to set ja-JP request: %v", err)
 	}

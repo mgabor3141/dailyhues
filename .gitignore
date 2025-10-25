@@ -23,6 +23,7 @@ go.work
 
 # Application
 cache_data/
+debug_responses/
 *.log
 .env
 

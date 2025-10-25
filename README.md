@@ -58,3 +58,11 @@ Both parameters are optional. `date` defaults to today, `locale` defaults to `en
 ```
 
 First request for a date takes 5-30 seconds (downloads wallpaper + AI analysis). Subsequent requests are instant (cached).
+
+## Debug Responses
+
+After each AI analysis call, a detailed debug file is automatically saved to the `debug_responses/` directory. These files are useful for:
+- Debugging AI color extraction issues
+- Reviewing Claude's extended thinking process
+- Tracking token usage and costs
+- Analyzing API response patterns

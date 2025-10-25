@@ -38,6 +38,7 @@ type ColorTheme struct {
 	Date          string            `json:"date"`
 	Images        map[string]string `json:"images"`
 	Colors        map[string]string `json:"colors"`
+	Title         string            `json:"title"`
 	Copyright     string            `json:"copyright"`
 	CopyrightLink string            `json:"copyright_link"`
 	CachedAt      string            `json:"cached_at"`
@@ -206,7 +207,7 @@ func (app *App) handleGetColors(w http.ResponseWriter, r *http.Request) {
 		// Analysis exists! Just cache the request metadata and return
 		log.Printf("Analysis cache hit for image hash: %s", imageHash)
 
-		if err := app.requestCache.Set(dateParam, locale, imageHash, info.ImageURLs, info.Copyright, info.CopyrightLink); err != nil {
+		if err := app.requestCache.Set(dateParam, locale, imageHash, info.ImageURLs, info.Title, info.Copyright, info.CopyrightLink); err != nil {
 			log.Printf("Failed to cache request: %v", err)
 		}
 
@@ -214,6 +215,7 @@ func (app *App) handleGetColors(w http.ResponseWriter, r *http.Request) {
 			Date:          dateParam,
 			Images:        info.ImageURLs,
 			Colors:        analysisEntry.Colors,
+			Title:         info.Title,
 			Copyright:     info.Copyright,
 			CopyrightLink: info.CopyrightLink,
 			CachedAt:      time.Now().Format(time.RFC3339),
@@ -231,7 +233,7 @@ func (app *App) handleGetColors(w http.ResponseWriter, r *http.Request) {
 	if analysisEntry := app.analysisCache.Get(imageHash); analysisEntry != nil {
 		log.Printf("Analysis completed by another request for image hash: %s", imageHash)
 
-		if err := app.requestCache.Set(dateParam, locale, imageHash, info.ImageURLs, info.Copyright, info.CopyrightLink); err != nil {
+		if err := app.requestCache.Set(dateParam, locale, imageHash, info.ImageURLs, info.Title, info.Copyright, info.CopyrightLink); err != nil {
 			log.Printf("Failed to cache request: %v", err)
 		}
 
@@ -239,6 +241,7 @@ func (app *App) handleGetColors(w http.ResponseWriter, r *http.Request) {
 			Date:          dateParam,
 			Images:        info.ImageURLs,
 			Colors:        analysisEntry.Colors,
+			Title:         info.Title,
 			Copyright:     info.Copyright,
 			CopyrightLink: info.CopyrightLink,
 			CachedAt:      time.Now().Format(time.RFC3339),
@@ -249,7 +252,7 @@ func (app *App) handleGetColors(w http.ResponseWriter, r *http.Request) {
 
 	// Step 7: Analyze colors with AI (image already downloaded)
 	log.Printf("Starting AI analysis for image hash: %s", imageHash)
-	colors, err := app.aiAnalyzer.AnalyzeColors(imageData)
+	colors, err := app.aiAnalyzer.AnalyzeColors(imageData, imageHash, info.Title, info.Copyright)
 	if err != nil {
 		log.Printf("Failed to download wallpaper: %v", err)
 		respondWithError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to download wallpaper: %v", err))
@@ -270,7 +273,7 @@ func (app *App) handleGetColors(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Step 9: Store request metadata in cache
-	if err := app.requestCache.Set(dateParam, locale, imageHash, info.ImageURLs, info.Copyright, info.CopyrightLink); err != nil {
+	if err := app.requestCache.Set(dateParam, locale, imageHash, info.ImageURLs, info.Title, info.Copyright, info.CopyrightLink); err != nil {
 		log.Printf("Failed to cache request: %v", err)
 	}
 
@@ -279,6 +282,7 @@ func (app *App) handleGetColors(w http.ResponseWriter, r *http.Request) {
 		Date:          dateParam,
 		Images:        info.ImageURLs,
 		Colors:        colors,
+		Title:         info.Title,
 		Copyright:     info.Copyright,
 		CopyrightLink: info.CopyrightLink,
 		CachedAt:      time.Now().Format(time.RFC3339),

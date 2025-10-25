@@ -10,7 +10,10 @@ import (
 	"image/jpeg"
 	_ "image/png" // Register PNG format
 	"io"
+	"log"
 	"net/http"
+	"os"
+	"path/filepath"
 	"regexp"
 	"time"
 )
@@ -38,8 +41,14 @@ func NewAnalyzer(apiKey string) *Analyzer {
 
 // openRouterRequest represents the request format for OpenRouter API
 type openRouterRequest struct {
-	Model    string    `json:"model"`
-	Messages []message `json:"messages"`
+	Model     string    `json:"model"`
+	Reasoning reasoning `json:"reasoning"`
+	Messages  []message `json:"messages"`
+	MaxTokens int       `json:"max_tokens"`
+}
+
+type reasoning struct {
+	Enabled bool `json:"enabled"`
 }
 
 type message struct {
@@ -61,18 +70,91 @@ type imageURL struct {
 type openRouterResponse struct {
 	Choices []struct {
 		Message struct {
-			Content string `json:"content"`
+			Content   string `json:"content"`
+			Reasoning string `json:"reasoning"`
 		} `json:"message"`
 	} `json:"choices"`
 	Error *struct {
 		Message string `json:"message"`
 		Code    string `json:"code"`
 	} `json:"error,omitempty"`
+	Usage *struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+		TotalTokens      int `json:"total_tokens"`
+	} `json:"usage,omitempty"`
+}
+
+// debugResponse contains the full debug information for an AI call
+type debugResponse struct {
+	Timestamp        string              `json:"timestamp"`
+	ImageHash        string              `json:"image_hash"`
+	ImageName        string              `json:"image_name"`
+	ImageSize        int                 `json:"image_size_bytes"`
+	Model            string              `json:"model"`
+	Content          string              `json:"content"`
+	ExtendedThinking string              `json:"extended_thinking,omitempty"`
+	ParsedColors     map[string]string   `json:"parsed_colors"`
+	Usage            map[string]int      `json:"usage,omitempty"`
+	RawResponse      *openRouterResponse `json:"raw_response"`
+}
+
+// saveDebugResponse saves the AI response to a debug file
+func (a *Analyzer) saveDebugResponse(imageHash string, imageName string, imageSize int, apiResp *openRouterResponse, colors map[string]string) error {
+	// Create debug directory if it doesn't exist
+	debugDir := "debug_responses"
+	if err := os.MkdirAll(debugDir, 0755); err != nil {
+		return fmt.Errorf("failed to create debug directory: %w", err)
+	}
+
+	// Prepare debug data
+	timestamp := time.Now().Format("2006-01-02")
+	debug := debugResponse{
+		Timestamp:    time.Now().Format(time.RFC3339),
+		ImageHash:    imageHash,
+		ImageName:    imageName,
+		ImageSize:    imageSize,
+		Model:        claudeModel,
+		ParsedColors: colors,
+		RawResponse:  apiResp,
+	}
+
+	if len(apiResp.Choices) > 0 {
+		debug.Content = apiResp.Choices[0].Message.Content
+	}
+
+	if apiResp.Usage != nil {
+		debug.Usage = map[string]int{
+			"prompt_tokens":     apiResp.Usage.PromptTokens,
+			"completion_tokens": apiResp.Usage.CompletionTokens,
+			"total_tokens":      apiResp.Usage.TotalTokens,
+		}
+	}
+
+	// Marshal to pretty JSON
+	jsonData, err := json.MarshalIndent(debug, "", "  ")
+	if err != nil {
+		return fmt.Errorf("failed to marshal debug data: %w", err)
+	}
+
+	// Write to file with timestamp, image name, and image hash
+	// Sanitize image name for filename
+	sanitizedName := regexp.MustCompile(`[^a-zA-Z0-9-_]`).ReplaceAllString(imageName, "_")
+	if len(sanitizedName) > 50 {
+		sanitizedName = sanitizedName[:50]
+	}
+	filename := filepath.Join(debugDir, fmt.Sprintf("%s_%s_%s.json", timestamp, sanitizedName, imageHash[:12]))
+	if err := os.WriteFile(filename, jsonData, 0644); err != nil {
+		return fmt.Errorf("failed to write debug file: %w", err)
+	}
+
+	log.Printf("Debug response saved to: %s", filename)
+	return nil
 }
 
 // AnalyzeColors sends an image to Claude via OpenRouter for color analysis
 // Returns a map of named hex color codes suitable for theming
-func (a *Analyzer) AnalyzeColors(imageData []byte) (map[string]string, error) {
+func (a *Analyzer) AnalyzeColors(imageData []byte, imageHash string, title string, copyright string) (map[string]string, error) {
 	// Resize image to reduce token count
 	resizedImage, err := a.resizeImage(imageData, 540)
 	if err != nil {
@@ -85,6 +167,10 @@ func (a *Analyzer) AnalyzeColors(imageData []byte) (map[string]string, error) {
 	// Construct the request
 	reqBody := openRouterRequest{
 		Model: claudeModel,
+		Reasoning: reasoning{
+			Enabled: true,
+		},
+		MaxTokens: 4168,
 		Messages: []message{
 			{
 				Role: "user",
@@ -97,21 +183,20 @@ func (a *Analyzer) AnalyzeColors(imageData []byte) (map[string]string, error) {
 					},
 					{
 						Type: "text",
-						Text: `Analyze this wallpaper image and extract a color palette suitable for UI theming.
+						Text: fmt.Sprintf(`You are a professional UI and UX designer with a background in color theory. Analyze this wallpaper image and extract a color palette suitable for UI theming.
+
+Image context:
+- Title: %s
+- Copyright: %s
 
 Please provide prominent colors from the image with meaningful names for their usage.
 Include colors for:
-- highlight: Main accent/highlight color
-- primary: Primary UI color
-- secondary: Secondary/complementary color
-- background: Suitable background color
-- surface: Card/surface color
-- text: Text color that works with the palette
+- highlight: Main accent/highlight color, will be used as the selected workspace, some buttons, and the focused window border.
 
 Return your response as a JSON object with color names as keys and hex codes as values (including the # symbol).
-Example format: {"highlight": "#1a73e8", "primary": "#34a853", "secondary": "#fbbc04", "background": "#ffffff", "surface": "#f5f5f5", "text": "#212121"}
+Example format: {"highlight": "#1a73e8"}
 
-Only return the JSON object, nothing else.`,
+Only return the JSON object, nothing else. Do not use any formatting or additional text.`, title, copyright),
 					},
 				},
 			},
@@ -176,6 +261,11 @@ Only return the JSON object, nothing else.`,
 	colors, err := a.parseColorsFromResponse(content)
 	if err != nil {
 		return nil, fmt.Errorf("failed to parse colors: %w", err)
+	}
+
+	// Save debug response (log error but don't fail the request)
+	if debugErr := a.saveDebugResponse(imageHash, title, len(imageData), &apiResp, colors); debugErr != nil {
+		log.Printf("Warning: Failed to save debug response: %v", debugErr)
 	}
 
 	return colors, nil
