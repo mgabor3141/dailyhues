@@ -20,17 +20,22 @@ const (
 	openRouterURL       = "https://openrouter.ai/api/v1/chat/completions"
 	claudeModel         = "anthropic/claude-sonnet-4.5"
 	aiRequestTimeout    = 60 * time.Second
-	colorAnalysisPrompt = `You are a professional UI and UX designer with a background in color theory. Please provide a color palette that will work well for the desktop user interface against this wallpaper. Make sure that there is always sufficient contrast between the color you choose and the part of the wallpaper that will be adjacent to it.
+	colorAnalysisPrompt = `You are a professional UI/UX designer and artist with a strong background in color theory and accessibility guidelines. You are working on the theme for a desktop window manager, and need to design a gradient for when the attached image is set as the desktop wallpaper. Please design a gradient that will work well as the color for the focused window's border!
 
-Include colors for:
-- "highlight": Main accent/highlight color, will be used as the selected workspace, and for some buttons. Must look good as a background color behind black text! Make sure it stands out compared to the top part of the wallpaper.
-- "gradient_from" and "gradient_to": Continue with the same theme and come up with a gradient that will be used as the color for the focused window's border. Make sure all parts of the gradient pop against the background! Use colors that are at least somewhat vibrant because of this, avoid grays if possible. The top of the gradient can match the highlight color.
-- "gradient_angle": Angle for the gradient
+- Think about the mood of the image and how you can use the UI colors to enhance it.
+- Apply your extensive knowledge of color theory to design the perfect gradient for this wallpaper.
+- The most important task is to balance adequate contrast for readability with pleasing colors that are harmonious with the image's color palette.
+- The "gradient_from" color must have adequate contrast as background for black text.
+- Make sure all parts of the gradient pop against the background, especially at the top and the bottom of the image! Use colors that are at least somewhat vibrant because of this, avoid grays if possible.
+- You can choose to use two similar colors for a subtle gradient, or distinct ones if the composition calls for it.
+- The gradient direction should compliment the image, but keep in mind that the bottom and top of the image are the most important areas for contrast!
+- Keep in mind that the colors should have enough contrast to be readable, but must not clash with the image's colors.
 
-Return your response as a JSON object with color names as keys and hex codes as values (including the # symbol).
-Example format: {"highlight": "#2b3442", "gradient_from": "#34495e", "gradient_to": "#456789", "gradient_angle": 45, "menubar_background": "#1a73e8"}
+(Reminder: A gradient direction of 135 degrees goes from the top left to the bottom right, 180 degrees goes from top to bottom, etc.)
 
-Only return the JSON object, nothing else. Do not use any formatting or additional text.`
+Reply only with a JSON object with the following format. Do not include any additional text or comments.
+
+{"gradient_from": "#34495e", "gradient_to": "#456789", "gradient_angle": 45}`
 )
 
 // Analyzer handles AI-powered color analysis of images

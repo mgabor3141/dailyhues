@@ -46,8 +46,6 @@ Both parameters are optional. `daysAgo` defaults to `0` (today), `locale` defaul
     "gradient_angle": 135,
     "gradient_from": "#c67d3a",
     "gradient_to": "#6b8d7d",
-    "highlight": "#d89543",
-
   },
   "title": "Finland's living peatland",
   "copyright": "Aerial view of peatland in Martimoaapa Mire Reserve, Finland (© romikatarina/Shutterstock)",
