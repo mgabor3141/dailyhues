@@ -278,10 +278,11 @@ func TestAnalysisCache_SetAndGet(t *testing.T) {
 	}
 
 	imageHash := "fedcba987654321098765432109876543210987654321098765432109876"
-	colors := map[string]string{
-		"highlight": "#ff0000",
-		"primary":   "#00ff00",
-		"secondary": "#0000ff",
+	colors := map[string]interface{}{
+		"highlight":      "#ff0000",
+		"primary":        "#00ff00",
+		"secondary":      "#0000ff",
+		"gradient-angle": 45,
 	}
 
 	// Set cache
@@ -336,7 +337,7 @@ func TestAnalysisCache_Persistence(t *testing.T) {
 	}
 
 	imageHash := "persistent1234567890123456789012345678901234567890123456789012"
-	colors := map[string]string{"highlight": "#aabbcc", "primary": "#ddeeff"}
+	colors := map[string]interface{}{"highlight": "#aabbcc", "primary": "#ddeeff"}
 
 	err = cache1.Set(imageHash, colors)
 	if err != nil {
@@ -431,6 +432,7 @@ func TestAnalysisCache_ConcurrentBlocking(t *testing.T) {
 
 		mu := cache.GetMutex(imageHash)
 		mu.Lock()
+		//lint:ignore SA2001 Intentionally empty critical section - we're only testing blocking behavior
 		mu.Unlock()
 
 		finished <- 2
@@ -472,7 +474,7 @@ func TestAnalysisCache_SharedImageAcrossLocales(t *testing.T) {
 	daysAgo := 0
 
 	// Store analysis once (shared)
-	colors := map[string]string{"highlight": "#ff0000", "primary": "#00ff00"}
+	colors := map[string]interface{}{"highlight": "#ff0000", "primary": "#00ff00"}
 	err = analysisCache.Set(imageHash, colors)
 	if err != nil {
 		t.Fatalf("Failed to set analysis: %v", err)
@@ -529,7 +531,7 @@ func BenchmarkAnalysisCache_Get(b *testing.B) {
 
 	// Pre-populate cache
 	imageHash := "bench12345678901234567890123456789012345678901234567890123456"
-	colors := map[string]string{"highlight": "#ff0000", "primary": "#00ff00"}
+	colors := map[string]interface{}{"highlight": "#ff0000", "primary": "#00ff00"}
 	err = cache.Set(imageHash, colors)
 	if err != nil {
 		b.Fatalf("Failed to set cache: %v", err)
@@ -550,7 +552,7 @@ func BenchmarkAnalysisCache_Set(b *testing.B) {
 	}
 
 	imageHash := "bench12345678901234567890123456789012345678901234567890123456"
-	colors := map[string]string{"highlight": "#ff0000", "primary": "#00ff00"}
+	colors := map[string]interface{}{"highlight": "#ff0000", "primary": "#00ff00"}
 
 	b.ResetTimer()
 	for i := 0; i < b.N; i++ {

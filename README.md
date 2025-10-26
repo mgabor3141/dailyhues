@@ -15,15 +15,10 @@ OPENROUTER_API_KEY=your_actual_api_key_here
 go run main.go
 ```
 
-The app automatically loads `.env` on startup. Alternatively, you can export the variable:
-```bash
-export OPENROUTER_API_KEY="your-key-here"
-go run main.go
-```
-
 ## API
 
-**GET** `/api/colors?daysAgo=0&locale=en-US`
+**GET** `/api/colors`
+**GET** `/api/colors?locale=en-US&daysAgo=0`
 
 Both parameters are optional. `daysAgo` defaults to `0` (today), `locale` defaults to `en-US`.
 
@@ -62,12 +57,4 @@ Both parameters are optional. `daysAgo` defaults to `0` (today), `locale` defaul
 }
 ```
 
-First request for a wallpaper takes 5-30 seconds (downloads wallpaper + AI analysis). Subsequent requests within the same hour are instant (cached). Cache automatically refreshes each hour to check for new images.
-
-## Debug Responses
-
-After each AI analysis call, a detailed debug file is automatically saved to the `debug_responses/` directory. These files are useful for:
-- Debugging AI color extraction issues
-- Reviewing Claude's extended thinking process
-- Tracking token usage and costs
-- Analyzing API response patterns
+First request for a wallpaper takes 5-30 seconds (downloads wallpaper + AI analysis). Subsequent requests are instant (cached). Bing is queried for new images every hour.

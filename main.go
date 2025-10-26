@@ -30,15 +30,15 @@ var allowedLocales = []string{
 
 // ColorTheme represents the response with extracted colors from a wallpaper
 type ColorTheme struct {
-	StartDate     string            `json:"startdate"`
-	FullStartDate string            `json:"fullstartdate"`
-	EndDate       string            `json:"enddate"`
-	Images        map[string]string `json:"images"`
-	Colors        map[string]string `json:"colors"`
-	Title         string            `json:"title"`
-	Copyright     string            `json:"copyright"`
-	CopyrightLink string            `json:"copyright_link"`
-	CachedAt      string            `json:"cached_at"`
+	StartDate     string                 `json:"startdate"`
+	FullStartDate string                 `json:"fullstartdate"`
+	EndDate       string                 `json:"enddate"`
+	Images        map[string]string      `json:"images"`
+	Colors        map[string]interface{} `json:"colors"`
+	Title         string                 `json:"title"`
+	Copyright     string                 `json:"copyright"`
+	CopyrightLink string                 `json:"copyright_link"`
+	CachedAt      string                 `json:"cached_at"`
 }
 
 // ErrorResponse represents an API error

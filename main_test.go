@@ -240,7 +240,7 @@ func TestConcurrency_TwoLevelCacheSystem(t *testing.T) {
 
 	// Simulate: Same image used by both en-US and ja-JP
 	imageURLs := map[string]string{"1920x1080": "https://bing.com/image.jpg"}
-	colors := map[string]string{"highlight": "#FF0000", "primary": "#00FF00"}
+	colors := map[string]interface{}{"highlight": "#FF0000", "primary": "#00FF00"}
 	title := "Test Title"
 	copyright := "Test Copyright © Photographer"
 	copyrightLink := "https://example.com/test"

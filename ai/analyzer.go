@@ -6,9 +6,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"image"
-	_ "image/gif" // Register GIF format
 	"image/jpeg"
-	_ "image/png" // Register PNG format
 	"io"
 	"log"
 	"net/http"
@@ -20,7 +18,7 @@ import (
 
 const (
 	openRouterURL       = "https://openrouter.ai/api/v1/chat/completions"
-	claudeModel         = "anthropic/claude-sonnet-4.5" // Claude Sonnet with extended thinking
+	claudeModel         = "anthropic/claude-sonnet-4.5"
 	aiRequestTimeout    = 60 * time.Second
 	colorAnalysisPrompt = `You are a professional UI and UX designer with a background in color theory. Analyze this wallpaper image and extract a color palette suitable for UI theming.
 
@@ -30,7 +28,7 @@ Image context:
 
 Please provide prominent colors from the image with meaningful names for their usage.
 Include colors for:
-- menubar_background: Background color for the menubar along the top edge of the screen. Should be close to full black, but can have a slight hue to match the wallpaper better.
+- menubar-background: Background color for the menubar along the top edge of the screen. Should be close to full black, but can have a slight hue to match the wallpaper better.
 - highlight: Main accent/highlight color, will be used as the selected workspace, some buttons, and potentially the focused window border. Must look good as a background color behind black text
 - gradient-from: Starting color for a gradient, which will be used as the alternative color for the focused window border
 - gradient-to: Ending color for the same gradient
@@ -106,20 +104,19 @@ type openRouterResponse struct {
 
 // debugResponse contains the full debug information for an AI call
 type debugResponse struct {
-	Timestamp        string              `json:"timestamp"`
-	ImageHash        string              `json:"image_hash"`
-	ImageName        string              `json:"image_name"`
-	ImageSize        int                 `json:"image_size_bytes"`
-	Model            string              `json:"model"`
-	Content          string              `json:"content"`
-	ExtendedThinking string              `json:"extended_thinking,omitempty"`
-	ParsedColors     map[string]string   `json:"parsed_colors"`
-	Usage            map[string]int      `json:"usage,omitempty"`
-	RawResponse      *openRouterResponse `json:"raw_response"`
+	Timestamp    string              `json:"timestamp"`
+	ImageHash    string              `json:"image_hash"`
+	ImageName    string              `json:"image_name"`
+	ImageSize    int                 `json:"image_size_bytes"`
+	Model        string              `json:"model"`
+	Content      string              `json:"content"`
+	ParsedColors map[string]any      `json:"parsed_colors"`
+	Usage        map[string]int      `json:"usage,omitempty"`
+	RawResponse  *openRouterResponse `json:"raw_response"`
 }
 
 // saveDebugResponse saves the AI response to a debug file
-func (a *Analyzer) saveDebugResponse(imageHash string, imageName string, imageSize int, apiResp *openRouterResponse, colors map[string]string) error {
+func (a *Analyzer) saveDebugResponse(imageHash string, imageName string, imageSize int, apiResp *openRouterResponse, colors map[string]any) error {
 	// Create debug directory if it doesn't exist
 	debugDir := "debug_responses"
 	if err := os.MkdirAll(debugDir, 0755); err != nil {
@@ -173,7 +170,7 @@ func (a *Analyzer) saveDebugResponse(imageHash string, imageName string, imageSi
 
 // AnalyzeColors sends an image to Claude via OpenRouter for color analysis
 // Returns a map of named hex color codes suitable for theming
-func (a *Analyzer) AnalyzeColors(imageData []byte, imageHash string, title string, copyright string) (map[string]string, error) {
+func (a *Analyzer) AnalyzeColors(imageData []byte, imageHash string, title string, copyright string) (map[string]interface{}, error) {
 	// Resize image to reduce token count
 	resizedImage, err := a.resizeImage(imageData, 540)
 	if err != nil {
@@ -277,20 +274,22 @@ func (a *Analyzer) AnalyzeColors(imageData []byte, imageHash string, title strin
 	return colors, nil
 }
 
-// parseColorsFromResponse extracts named color codes from the AI's response
-func (a *Analyzer) parseColorsFromResponse(content string) (map[string]string, error) {
+// parseColorsFromResponse extracts named color codes and other values from the AI's response
+// Returns a map with flexible value types to handle both strings (colors) and ints (angles) or other future types
+func (a *Analyzer) parseColorsFromResponse(content string) (map[string]interface{}, error) {
 	// Try to parse as JSON object first
-	var colors map[string]string
-	if err := json.Unmarshal([]byte(content), &colors); err == nil {
-		return colors, nil
+	var result map[string]interface{}
+	if err := json.Unmarshal([]byte(content), &result); err == nil {
+		return result, nil
 	}
 
 	// If that fails, try to extract JSON object from the text
-	jsonObjectRegex := regexp.MustCompile(`\{[^}]+\}`)
+	// Use a more flexible regex that can handle nested structures and multiline JSON
+	jsonObjectRegex := regexp.MustCompile(`(?s)\{[^{}]*(?:\{[^{}]*\}[^{}]*)*\}`)
 	matches := jsonObjectRegex.FindStringSubmatch(content)
 	if len(matches) > 0 {
-		if err := json.Unmarshal([]byte(matches[0]), &colors); err == nil {
-			return colors, nil
+		if err := json.Unmarshal([]byte(matches[0]), &result); err == nil {
+			return result, nil
 		}
 	}
 

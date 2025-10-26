@@ -7,6 +7,7 @@
   # https://devenv.sh/packages/
   packages = [ pkgs.git ];
 
+  languages.nix.enable = true;
   devcontainer.enable = true;
   dotenv.enable = true;
 
