@@ -11,6 +11,7 @@ import (
 const (
 	bingAPIURL  = "https://www.bing.com/HPImageArchive.aspx"
 	bingBaseURL = "https://www.bing.com"
+	httpTimeout = 30 * time.Second
 )
 
 // Client handles interactions with the Bing wallpaper API
@@ -27,18 +28,22 @@ type WallpaperInfo struct {
 	Title         string
 	Copyright     string
 	CopyrightLink string
-	Date          string
+	StartDate     string // Format: YYYYMMDD (e.g., "20251019")
+	FullStartDate string // Format: YYYYMMDDHHMM (e.g., "202510190700")
+	EndDate       string // Format: YYYYMMDD (e.g., "20251020")
 }
 
 // bingAPIResponse represents the JSON response from Bing's API
 type bingAPIResponse struct {
 	Images []struct {
-		URL          string `json:"url"`
-		URLBase      string `json:"urlbase"`
-		Title        string `json:"title"`
-		Copyright    string `json:"copyright"`
-		CopyrightURL string `json:"copyrightlink"`
-		StartDate    string `json:"startdate"` // Format: YYYYMMDD
+		URL           string `json:"url"`
+		URLBase       string `json:"urlbase"`
+		Title         string `json:"title"`
+		Copyright     string `json:"copyright"`
+		CopyrightURL  string `json:"copyrightlink"`
+		StartDate     string `json:"startdate"`     // Format: YYYYMMDD (e.g., "20251019")
+		FullStartDate string `json:"fullstartdate"` // Format: YYYYMMDDHHMM (e.g., "202510190700")
+		EndDate       string `json:"enddate"`       // Format: YYYYMMDD (e.g., "20251020")
 	} `json:"images"`
 }
 
@@ -50,7 +55,7 @@ func NewClient(market string) *Client {
 
 	return &Client{
 		httpClient: &http.Client{
-			Timeout: 30 * time.Second,
+			Timeout: httpTimeout,
 		},
 		market: market,
 	}
@@ -74,7 +79,7 @@ func (c *Client) GetWallpaperInfo(date string) (*WallpaperInfo, error) {
 	daysAgo := int(today.Sub(targetDate).Hours() / 24)
 
 	if daysAgo < 0 {
-		return nil, fmt.Errorf("cannot fetch wallpaper for future dates")
+		daysAgo = 0
 	}
 
 	// Bing API only keeps about 7-8 days of history
@@ -133,7 +138,9 @@ func (c *Client) GetWallpaperInfo(date string) (*WallpaperInfo, error) {
 		Title:         image.Title,
 		Copyright:     image.Copyright,
 		CopyrightLink: image.CopyrightURL,
-		Date:          date,
+		StartDate:     image.StartDate,
+		FullStartDate: image.FullStartDate,
+		EndDate:       image.EndDate,
 	}, nil
 }
 
@@ -172,6 +179,91 @@ func (c *Client) DownloadWallpaper(info *WallpaperInfo) ([]byte, error) {
 // GetWallpaper is a convenience method that fetches info and downloads in one call
 func (c *Client) GetWallpaper(date string) ([]byte, *WallpaperInfo, error) {
 	info, err := c.GetWallpaperInfo(date)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	data, err := c.DownloadWallpaper(info)
+	if err != nil {
+		return nil, nil, err
+	}
+
+	return data, info, nil
+}
+
+// GetWallpaperInfoByDaysAgo fetches metadata for the wallpaper by days ago
+// daysAgo should be 0 (today), 1 (yesterday), etc.
+func (c *Client) GetWallpaperInfoByDaysAgo(daysAgo int) (*WallpaperInfo, error) {
+	// Validate range
+	if daysAgo < 0 {
+		return nil, fmt.Errorf("daysAgo cannot be negative")
+	}
+
+	// Bing API only keeps about 7-8 days of history
+	if daysAgo > 7 {
+		return nil, fmt.Errorf("wallpaper too old (Bing only keeps ~7 days)")
+	}
+
+	// Build API URL
+	url := fmt.Sprintf("%s?format=js&idx=%d&n=1&mkt=%s", bingAPIURL, daysAgo, c.market)
+
+	// Make request
+	resp, err := c.httpClient.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to fetch from Bing API: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("Bing API returned status %d", resp.StatusCode)
+	}
+
+	// Parse response
+	var apiResp bingAPIResponse
+	if err := json.NewDecoder(resp.Body).Decode(&apiResp); err != nil {
+		return nil, fmt.Errorf("failed to parse Bing API response: %w", err)
+	}
+
+	if len(apiResp.Images) == 0 {
+		return nil, fmt.Errorf("no wallpaper found for daysAgo=%d", daysAgo)
+	}
+
+	image := apiResp.Images[0]
+
+	// Construct full URL
+	imageURL := bingBaseURL + image.URL
+	urlBase := bingBaseURL + image.URLBase
+
+	// Generate different size URLs (based on actual Bing availability)
+	imageURLs := map[string]string{
+		"UHD":       urlBase + "_UHD.jpg",       // Ultra HD (~3.2MB)
+		"1920x1200": urlBase + "_1920x1200.jpg", // Wide (~850KB)
+		"1920x1080": urlBase + "_1920x1080.jpg", // Full HD (~320KB)
+		"1366x768":  urlBase + "_1366x768.jpg",  // Laptop (~163KB)
+		"1280x720":  urlBase + "_1280x720.jpg",  // HD (~179KB)
+		"1024x768":  urlBase + "_1024x768.jpg",  // XGA (~66KB)
+		"800x600":   urlBase + "_800x600.jpg",   // SVGA (~93KB)
+	}
+
+	// Extract image ID from URLBase (e.g., "/th?id=OHR.ImageName_EN-US123456" -> "OHR.ImageName_EN-US123456")
+	imageID := extractImageID(image.URLBase)
+
+	return &WallpaperInfo{
+		URL:           imageURL,
+		ImageID:       imageID,
+		ImageURLs:     imageURLs,
+		Title:         image.Title,
+		Copyright:     image.Copyright,
+		CopyrightLink: image.CopyrightURL,
+		StartDate:     image.StartDate,
+		FullStartDate: image.FullStartDate,
+		EndDate:       image.EndDate,
+	}, nil
+}
+
+// GetWallpaperByDaysAgo is a convenience method that fetches info and downloads by daysAgo
+func (c *Client) GetWallpaperByDaysAgo(daysAgo int) ([]byte, *WallpaperInfo, error) {
+	info, err := c.GetWallpaperInfoByDaysAgo(daysAgo)
 	if err != nil {
 		return nil, nil, err
 	}

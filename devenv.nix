@@ -7,13 +7,16 @@
   # https://devenv.sh/packages/
   packages = [ pkgs.git ];
 
+  devcontainer.enable = true;
+  dotenv.enable = true;
+
   # https://devenv.sh/languages/
   languages.go.enable = true;
 
   # https://devenv.sh/scripts/
   scripts.hello.exec = ''
+    echo ""
     echo "🎨 Welcome to $GREET - Bing Wallpaper Color Analysis API"
-    echo "Go version: $(go version)"
   '';
 
   scripts.dev.exec = ''
@@ -29,13 +32,13 @@
 
   scripts.test.exec = ''
     echo "Running tests..."
-    go test ./... -v
+    go test ${config.git.root}/... -v
   '';
 
   scripts.lint.exec = ''
     echo "Running linters and formatters..."
-    go fmt ./...
-    go vet ./...
+    go fmt ${config.git.root}/...
+    go vet ${config.git.root}/...
   '';
 
   scripts.tidy.exec = ''
@@ -43,16 +46,24 @@
     go mod tidy
   '';
 
+  scripts.clear_cache.exec = ''
+    echo "Clearing request cache..."
+    rm -rf ${config.git.root}/cache_data
+    rm -rf ${config.git.root}/debug_responses
+    echo "✓ Cache cleared"
+  '';
+
   # https://devenv.sh/basics/
   enterShell = ''
     hello
     echo ""
     echo "Available commands:"
-    echo "  dev   - Run the development server"
-    echo "  build - Build production binary"
-    echo "  test  - Run tests"
-    echo "  lint  - Run formatters and linters"
-    echo "  tidy  - Clean up go.mod dependencies"
+    echo "  dev         - Run the development server"
+    echo "  build       - Build production binary"
+    echo "  test        - Run tests"
+    echo "  lint        - Run formatters and linters"
+    echo "  tidy        - Clean up go.mod dependencies"
+    echo "  clear_cache - Clear server request cache"
     echo ""
   '';
 

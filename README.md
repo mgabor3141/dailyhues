@@ -23,9 +23,11 @@ go run main.go
 
 ## API
 
-**GET** `/api/colors?date=YYYY-MM-DD&locale=en-US`
+**GET** `/api/colors?daysAgo=0&locale=en-US`
 
-Both parameters are optional. `date` defaults to today, `locale` defaults to `en-US`.
+Both parameters are optional. `daysAgo` defaults to `0` (today), `locale` defaults to `en-US`.
+
+`daysAgo` can be `0` (today), `1` (yesterday), up to `7` (7 days ago). Bing only keeps wallpapers for the last 7 days.
 
 **Allowed locales:** `en-US`, `en-GB`, `en-CA`, `en-AU`, `en-IN`, `ja-JP`, `zh-CN`, `zh-TW`, `de-DE`, `fr-FR`, `es-ES`, `it-IT`, `pt-BR`, `ru-RU`, `ko-KR`
 
@@ -33,7 +35,9 @@ Both parameters are optional. `date` defaults to today, `locale` defaults to `en
 
 ```json
 {
-  "date": "2024-01-15",
+  "startdate": "20251019",
+  "fullstartdate": "202510190700",
+  "enddate": "20251020",
   "images": {
     "UHD": "https://www.bing.com/th?id=OHR.Example_UHD.jpg",
     "1920x1200": "https://www.bing.com/th?id=OHR.Example_1920x1200.jpg",
@@ -51,13 +55,14 @@ Both parameters are optional. `date` defaults to today, `locale` defaults to `en
     "surface": "#f5f5f5",
     "text": "#212121"
   },
+  "title": "Finland's living peatland",
   "copyright": "Aerial view of peatland in Martimoaapa Mire Reserve, Finland (© romikatarina/Shutterstock)",
   "copyright_link": "https://www.bing.com/search?q=Martimoaapa+Finland&form=hpcapt",
   "cached_at": "2024-01-15T10:30:00Z"
 }
 ```
 
-First request for a date takes 5-30 seconds (downloads wallpaper + AI analysis). Subsequent requests are instant (cached).
+First request for a wallpaper takes 5-30 seconds (downloads wallpaper + AI analysis). Subsequent requests within the same hour are instant (cached). Cache automatically refreshes each hour to check for new images.
 
 ## Debug Responses
 

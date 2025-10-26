@@ -3,6 +3,7 @@ package cache
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"os"
 	"path/filepath"
 	"strings"
@@ -96,7 +97,7 @@ func (c *AnalysisCache) LoadAll() error {
 	}
 
 	if loaded > 0 {
-		fmt.Printf("Loaded %d analysis cache entries\n", loaded)
+		log.Printf("Loaded %d analysis cache entries", loaded)
 	}
 
 	return nil

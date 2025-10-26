@@ -4,13 +4,13 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
-	"time"
 
+	"github.com/mgabor3141/wallpaper-highlight/bing"
 	"github.com/mgabor3141/wallpaper-highlight/cache"
 )
 
-// TestHandleGetColors_InvalidDateFormat tests invalid date formats
-func TestHandleGetColors_InvalidDateFormat(t *testing.T) {
+// TestHandleGetColors_InvalidDaysAgo tests invalid daysAgo values
+func TestHandleGetColors_InvalidDaysAgo(t *testing.T) {
 	tmpDir := t.TempDir()
 	requestCache, _ := cache.NewRequestCache(tmpDir)
 	analysisCache, _ := cache.NewAnalysisCache(tmpDir)
@@ -18,22 +18,21 @@ func TestHandleGetColors_InvalidDateFormat(t *testing.T) {
 	app := &App{
 		requestCache:  requestCache,
 		analysisCache: analysisCache,
+		bingClient:    bing.NewClient(defaultLocale),
 	}
 
 	tests := []struct {
-		name string
-		date string
+		name    string
+		daysAgo string
 	}{
-		{"Invalid format", "2024-13-45"},
-		{"Wrong separator", "2024/01/15"},
-		{"No dashes", "20240115"},
-		{"Text", "invalid"},
-		{"Incomplete", "2024-01"},
+		{"Not a number", "invalid"},
+		{"Negative", "-1"},
+		{"Too large", "10"},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("GET", "/api/colors?date="+tt.date, nil)
+			req := httptest.NewRequest("GET", "/api/colors?daysAgo="+tt.daysAgo, nil)
 			w := httptest.NewRecorder()
 
 			app.handleGetColors(w, req)
@@ -45,8 +44,8 @@ func TestHandleGetColors_InvalidDateFormat(t *testing.T) {
 	}
 }
 
-// TestHandleGetColors_FutureDate tests that future dates are rejected
-func TestHandleGetColors_FutureDate(t *testing.T) {
+// TestHandleGetColors_DaysAgoTooLarge tests that daysAgo > 7 is rejected
+func TestHandleGetColors_DaysAgoTooLarge(t *testing.T) {
 	tmpDir := t.TempDir()
 	requestCache, _ := cache.NewRequestCache(tmpDir)
 	analysisCache, _ := cache.NewAnalysisCache(tmpDir)
@@ -54,40 +53,42 @@ func TestHandleGetColors_FutureDate(t *testing.T) {
 	app := &App{
 		requestCache:  requestCache,
 		analysisCache: analysisCache,
+		bingClient:    bing.NewClient(defaultLocale),
 	}
 
-	tomorrow := time.Now().AddDate(0, 0, 1).Format("2006-01-02")
-
-	req := httptest.NewRequest("GET", "/api/colors?date="+tomorrow, nil)
+	req := httptest.NewRequest("GET", "/api/colors?daysAgo=8", nil)
 	w := httptest.NewRecorder()
 
 	app.handleGetColors(w, req)
 
 	if w.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400 for future date, got %d", w.Code)
+		t.Errorf("Expected status 400 for daysAgo too large, got %d", w.Code)
 	}
 }
 
-// TestHandleGetColors_DateTooOld tests that dates older than 7 days are rejected
-func TestHandleGetColors_DateTooOld(t *testing.T) {
-	tmpDir := t.TempDir()
-	requestCache, _ := cache.NewRequestCache(tmpDir)
-	analysisCache, _ := cache.NewAnalysisCache(tmpDir)
-
-	app := &App{
-		requestCache:  requestCache,
-		analysisCache: analysisCache,
+// TestHandleGetColors_ValidDaysAgo tests valid daysAgo values
+func TestHandleGetColors_ValidDaysAgo(t *testing.T) {
+	tests := []struct {
+		name    string
+		daysAgo string
+		want    int
+	}{
+		{"Today (empty)", "", 0},
+		{"Today (explicit)", "0", 0},
+		{"Yesterday", "1", 1},
+		{"Last week", "7", 7},
 	}
 
-	eightDaysAgo := time.Now().AddDate(0, 0, -8).Format("2006-01-02")
-
-	req := httptest.NewRequest("GET", "/api/colors?date="+eightDaysAgo, nil)
-	w := httptest.NewRecorder()
-
-	app.handleGetColors(w, req)
-
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400 for date too old, got %d", w.Code)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := validateDaysAgo(tt.daysAgo)
+			if err != nil {
+				t.Errorf("Expected no error for valid daysAgo, got: %v", err)
+			}
+			if result != tt.want {
+				t.Errorf("Expected %d, got %d", tt.want, result)
+			}
+		})
 	}
 }
 
@@ -100,6 +101,7 @@ func TestHandleGetColors_InvalidLocale(t *testing.T) {
 	app := &App{
 		requestCache:  requestCache,
 		analysisCache: analysisCache,
+		bingClient:    bing.NewClient(defaultLocale),
 	}
 
 	tests := []struct {
@@ -135,8 +137,15 @@ func TestHandleGetColors_ValidLocales(t *testing.T) {
 
 	for _, locale := range validLocales {
 		t.Run(locale, func(t *testing.T) {
-			if !allowedLocales[locale] {
-				t.Errorf("Locale %s should be allowed but is not in allowedLocales map", locale)
+			found := false
+			for _, allowed := range allowedLocales {
+				if locale == allowed {
+					found = true
+					break
+				}
+			}
+			if !found {
+				t.Errorf("Locale %s should be allowed but is not in allowedLocales slice", locale)
 			}
 		})
 	}
@@ -151,6 +160,7 @@ func TestHandleGetColors_WrongMethod(t *testing.T) {
 	app := &App{
 		requestCache:  requestCache,
 		analysisCache: analysisCache,
+		bingClient:    bing.NewClient(defaultLocale),
 	}
 
 	methods := []string{"POST", "PUT", "DELETE", "PATCH"}
@@ -186,7 +196,7 @@ func TestHandleHealth(t *testing.T) {
 	}
 }
 
-// TestConcurrency_ImageHashMutex tests that mutex is keyed by image hash, not date+locale
+// TestConcurrency_ImageHashMutex tests that mutex is keyed by image hash, not daysAgo+locale
 func TestConcurrency_ImageHashMutex(t *testing.T) {
 	tmpDir := t.TempDir()
 	analysisCache, err := cache.NewAnalysisCache(tmpDir)
@@ -225,7 +235,7 @@ func TestConcurrency_TwoLevelCacheSystem(t *testing.T) {
 		t.Fatalf("Failed to create analysis cache: %v", err)
 	}
 
-	date := "2024-01-15"
+	daysAgo := 0
 	imageHash := "shared789012345678901234567890123456789012345678901234567890"
 
 	// Simulate: Same image used by both en-US and ja-JP
@@ -234,6 +244,10 @@ func TestConcurrency_TwoLevelCacheSystem(t *testing.T) {
 	title := "Test Title"
 	copyright := "Test Copyright © Photographer"
 	copyrightLink := "https://example.com/test"
+	startDate := "20251019"
+	fullStartDate := "202510190700"
+	endDate := "20251020"
+	expiresAt := getNextHourBoundary()
 
 	// Store analysis once (shared)
 	err = analysisCache.Set(imageHash, colors)
@@ -242,20 +256,20 @@ func TestConcurrency_TwoLevelCacheSystem(t *testing.T) {
 	}
 
 	// Store request metadata for en-US
-	err = requestCache.Set(date, "en-US", imageHash, imageURLs, title, copyright, copyrightLink)
+	err = requestCache.Set("en-US", daysAgo, imageHash, imageURLs, title, copyright, copyrightLink, startDate, fullStartDate, endDate, expiresAt)
 	if err != nil {
 		t.Fatalf("Failed to set en-US request: %v", err)
 	}
 
 	// Store request metadata for ja-JP (same image hash!)
-	err = requestCache.Set(date, "ja-JP", imageHash, imageURLs, title, copyright, copyrightLink)
+	err = requestCache.Set("ja-JP", daysAgo, imageHash, imageURLs, title, copyright, copyrightLink, startDate, fullStartDate, endDate, expiresAt)
 	if err != nil {
 		t.Fatalf("Failed to set ja-JP request: %v", err)
 	}
 
 	// Both requests should point to same analysis
-	reqUS := requestCache.Get(date, "en-US")
-	reqJP := requestCache.Get(date, "ja-JP")
+	reqUS := requestCache.Get("en-US", daysAgo)
+	reqJP := requestCache.Get("ja-JP", daysAgo)
 
 	if reqUS == nil || reqJP == nil {
 		t.Fatal("Expected both request entries to exist")

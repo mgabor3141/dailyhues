@@ -28,8 +28,8 @@ func TestRequestCache_SetAndGet(t *testing.T) {
 		t.Fatalf("Failed to create cache: %v", err)
 	}
 
-	date := "2024-01-15"
 	locale := "en-US"
+	daysAgo := 0
 	imageHash := "abc123def456789012345678901234567890123456789012345678901234"
 	imageURLs := map[string]string{
 		"1920x1080": "https://bing.com/image_1920x1080.jpg",
@@ -38,21 +38,25 @@ func TestRequestCache_SetAndGet(t *testing.T) {
 	title := "Test Title"
 	copyright := "Test Copyright © Photographer"
 	copyrightLink := "https://example.com/copyright"
+	expiresAt := time.Now().Add(time.Hour)
 
 	// Set cache
-	err = cache.Set(date, locale, imageHash, imageURLs, title, copyright, copyrightLink)
+	startDate := "20251019"
+	fullStartDate := "202510190700"
+	endDate := "20251020"
+	err = cache.Set(locale, daysAgo, imageHash, imageURLs, title, copyright, copyrightLink, startDate, fullStartDate, endDate, expiresAt)
 	if err != nil {
 		t.Fatalf("Failed to set cache: %v", err)
 	}
 
 	// Get cache
-	entry := cache.Get(date, locale)
+	entry := cache.Get(locale, daysAgo)
 	if entry == nil {
 		t.Fatal("Expected entry, got nil")
 	}
 
-	if entry.Date != date {
-		t.Errorf("Expected date %s, got %s", date, entry.Date)
+	if entry.DaysAgo != daysAgo {
+		t.Errorf("Expected daysAgo %d, got %d", daysAgo, entry.DaysAgo)
 	}
 
 	if entry.Locale != locale {
@@ -76,7 +80,7 @@ func TestRequestCache_GetNonExistent(t *testing.T) {
 		t.Fatalf("Failed to create cache: %v", err)
 	}
 
-	entry := cache.Get("2024-12-31", "xx-XX")
+	entry := cache.Get("xx-XX", 99)
 	if entry != nil {
 		t.Error("Expected nil for non-existent entry")
 	}
@@ -92,15 +96,19 @@ func TestRequestCache_Persistence(t *testing.T) {
 		t.Fatalf("Failed to create first cache: %v", err)
 	}
 
-	date := "2024-01-15"
 	locale := "ja-JP"
+	daysAgo := 1
 	imageHash := "def789ghi012345678901234567890123456789012345678901234567890"
 	imageURLs := map[string]string{"1920x1080": "https://bing.com/img.jpg"}
 	title := "Test Title"
 	copyright := "Persistent Test Copyright"
 	copyrightLink := "https://example.com/persist"
+	expiresAt := time.Now().Add(time.Hour)
 
-	err = cache1.Set(date, locale, imageHash, imageURLs, title, copyright, copyrightLink)
+	startDate := "20251019"
+	fullStartDate := "202510190700"
+	endDate := "20251020"
+	err = cache1.Set(locale, daysAgo, imageHash, imageURLs, title, copyright, copyrightLink, startDate, fullStartDate, endDate, expiresAt)
 	if err != nil {
 		t.Fatalf("Failed to set cache: %v", err)
 	}
@@ -118,13 +126,85 @@ func TestRequestCache_Persistence(t *testing.T) {
 	}
 
 	// Data should be loaded from file
-	entry := cache2.Get(date, locale)
+	entry := cache2.Get(locale, daysAgo)
 	if entry == nil {
 		t.Fatal("Expected entry from persisted file, got nil")
 	}
 
 	if entry.ImageHash != imageHash {
 		t.Errorf("Expected imageHash %s, got %s", imageHash, entry.ImageHash)
+	}
+}
+
+// TestRequestCache_TTLExpiration tests that cache entries respect expiration time
+func TestRequestCache_TTLExpiration(t *testing.T) {
+	tmpDir := t.TempDir()
+	cache, err := NewRequestCache(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create cache: %v", err)
+	}
+
+	locale := "en-US"
+	daysAgo := 0
+	imageHash := "ttl12345678901234567890123456789012345678901234567890123456"
+	imageURLs := map[string]string{"1920x1080": "https://bing.com/img.jpg"}
+	title := "TTL Test Title"
+	copyright := "TTL Test Copyright"
+	copyrightLink := "https://example.com/ttl"
+
+	// Test 1: Entry with expiration in the past
+	startDate := "20251019"
+	fullStartDate := "202510190700"
+	endDate := "20251020"
+	pastExpiration := time.Now().Add(-1 * time.Hour)
+	err = cache.Set(locale, daysAgo, imageHash, imageURLs, title, copyright, copyrightLink, startDate, fullStartDate, endDate, pastExpiration)
+	if err != nil {
+		t.Fatalf("Failed to set cache: %v", err)
+	}
+
+	entry := cache.Get(locale, daysAgo)
+	if entry == nil {
+		t.Fatal("Expected entry to exist")
+	}
+
+	if time.Now().Before(entry.ExpiresAt) {
+		t.Error("Expected entry to be expired")
+	}
+
+	// Test 2: Entry with expiration in the future
+	futureExpiration := time.Now().Add(1 * time.Hour)
+	err = cache.Set(locale, daysAgo, imageHash, imageURLs, title, copyright, copyrightLink, startDate, fullStartDate, endDate, futureExpiration)
+	if err != nil {
+		t.Fatalf("Failed to set cache: %v", err)
+	}
+
+	entry = cache.Get(locale, daysAgo)
+	if entry == nil {
+		t.Fatal("Expected entry to exist")
+	}
+
+	if !time.Now().Before(entry.ExpiresAt) {
+		t.Error("Expected entry to not be expired")
+	}
+
+	// Test 3: Verify expiration time is persisted
+	cache2, err := NewRequestCache(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create second cache: %v", err)
+	}
+
+	err = cache2.LoadAll()
+	if err != nil {
+		t.Fatalf("Failed to load cache: %v", err)
+	}
+
+	entry2 := cache2.Get(locale, daysAgo)
+	if entry2 == nil {
+		t.Fatal("Expected entry to exist after reload")
+	}
+
+	if !entry.ExpiresAt.Equal(entry2.ExpiresAt) {
+		t.Errorf("Expected expiration time %v, got %v", entry.ExpiresAt, entry2.ExpiresAt)
 	}
 }
 
@@ -147,23 +227,27 @@ func TestRequestCache_ConcurrentAccess(t *testing.T) {
 			defer wg.Done()
 
 			for j := 0; j < numOperations; j++ {
-				date := "2024-01-15"
 				locale := "en-US"
+				daysAgo := 0
 				imageHash := "abc123test456789012345678901234567890123456789012345678901"
 				imageURLs := map[string]string{"1920x1080": "https://bing.com/img.jpg"}
 				title := "Test Title"
 				copyright := "Concurrent Test Copyright"
 				copyrightLink := "https://example.com/concurrent"
+				expiresAt := time.Now().Add(time.Hour)
 
 				// Write
-				err := cache.Set(date, locale, imageHash, imageURLs, title, copyright, copyrightLink)
+				startDate := "20251019"
+				fullStartDate := "202510190700"
+				endDate := "20251020"
+				err := cache.Set(locale, daysAgo, imageHash, imageURLs, title, copyright, copyrightLink, startDate, fullStartDate, endDate, expiresAt)
 				if err != nil {
 					t.Errorf("Goroutine %d: Failed to set cache: %v", id, err)
 					return
 				}
 
 				// Read
-				_ = cache.Get(date, locale)
+				_ = cache.Get(locale, daysAgo)
 			}
 		}(i)
 	}
@@ -383,9 +467,9 @@ func TestAnalysisCache_SharedImageAcrossLocales(t *testing.T) {
 		t.Fatalf("Failed to create request cache: %v", err)
 	}
 
-	// Simulate: Same image used by both en-US and ja-JP on same date
+	// Simulate: Same image used by both en-US and ja-JP on same daysAgo
 	imageHash := "shared789012345678901234567890123456789012345678901234567890"
-	date := "2024-01-15"
+	daysAgo := 0
 
 	// Store analysis once (shared)
 	colors := map[string]string{"highlight": "#ff0000", "primary": "#00ff00"}
@@ -399,20 +483,24 @@ func TestAnalysisCache_SharedImageAcrossLocales(t *testing.T) {
 	title := "Shared Image Title"
 	copyright := "Shared Image Copyright"
 	copyrightLink := "https://example.com/shared"
-	err = requestCache.Set(date, "en-US", imageHash, imageURLs, title, copyright, copyrightLink)
+	startDate := "20251019"
+	fullStartDate := "202510190700"
+	endDate := "20251020"
+	expiresAt := time.Now().Add(time.Hour)
+	err = requestCache.Set("en-US", daysAgo, imageHash, imageURLs, title, copyright, copyrightLink, startDate, fullStartDate, endDate, expiresAt)
 	if err != nil {
 		t.Fatalf("Failed to set en-US request: %v", err)
 	}
 
 	// Store request metadata for ja-JP (same image hash!)
-	err = requestCache.Set(date, "ja-JP", imageHash, imageURLs, title, copyright, copyrightLink)
+	err = requestCache.Set("ja-JP", daysAgo, imageHash, imageURLs, title, copyright, copyrightLink, startDate, fullStartDate, endDate, expiresAt)
 	if err != nil {
 		t.Fatalf("Failed to set ja-JP request: %v", err)
 	}
 
 	// Both requests should point to same analysis
-	reqUS := requestCache.Get(date, "en-US")
-	reqJP := requestCache.Get(date, "ja-JP")
+	reqUS := requestCache.Get("en-US", daysAgo)
+	reqJP := requestCache.Get("ja-JP", daysAgo)
 
 	if reqUS == nil || reqJP == nil {
 		t.Fatal("Expected both request entries to exist")

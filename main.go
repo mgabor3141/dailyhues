@@ -6,36 +6,33 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 
-	"github.com/joho/godotenv"
 	"github.com/mgabor3141/wallpaper-highlight/ai"
 	"github.com/mgabor3141/wallpaper-highlight/bing"
 	"github.com/mgabor3141/wallpaper-highlight/cache"
 )
 
+const (
+	cacheDataDir  = "./cache_data"
+	defaultLocale = "en-US"
+	defaultPort   = "8080"
+	maxDaysBack   = 7
+)
+
 // Allowed locales for Bing wallpaper API
-var allowedLocales = map[string]bool{
-	"en-US": true,
-	"en-GB": true,
-	"en-CA": true,
-	"en-AU": true,
-	"en-IN": true,
-	"ja-JP": true,
-	"zh-CN": true,
-	"zh-TW": true,
-	"de-DE": true,
-	"fr-FR": true,
-	"es-ES": true,
-	"it-IT": true,
-	"pt-BR": true,
-	"ru-RU": true,
-	"ko-KR": true,
+var allowedLocales = []string{
+	"en-US", "en-GB", "en-CA", "en-AU", "en-IN",
+	"ja-JP", "zh-CN", "zh-TW", "de-DE", "fr-FR",
+	"es-ES", "it-IT", "pt-BR", "ru-RU", "ko-KR",
 }
 
 // ColorTheme represents the response with extracted colors from a wallpaper
 type ColorTheme struct {
-	Date          string            `json:"date"`
+	StartDate     string            `json:"startdate"`
+	FullStartDate string            `json:"fullstartdate"`
+	EndDate       string            `json:"enddate"`
 	Images        map[string]string `json:"images"`
 	Colors        map[string]string `json:"colors"`
 	Title         string            `json:"title"`
@@ -58,9 +55,6 @@ type App struct {
 }
 
 func main() {
-	// Load .env file if it exists (ignore error if file doesn't exist)
-	_ = godotenv.Load()
-
 	// Get OpenRouter API key from environment
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
 	if apiKey == "" {
@@ -68,12 +62,12 @@ func main() {
 	}
 
 	// Initialize caches
-	requestCache, err := cache.NewRequestCache("./cache_data")
+	requestCache, err := cache.NewRequestCache(cacheDataDir)
 	if err != nil {
 		log.Fatalf("Failed to initialize request cache: %v", err)
 	}
 
-	analysisCache, err := cache.NewAnalysisCache("./cache_data")
+	analysisCache, err := cache.NewAnalysisCache(cacheDataDir)
 	if err != nil {
 		log.Fatalf("Failed to initialize analysis cache: %v", err)
 	}
@@ -90,7 +84,7 @@ func main() {
 	app := &App{
 		requestCache:  requestCache,
 		analysisCache: analysisCache,
-		bingClient:    bing.NewClient("en-US"),
+		bingClient:    bing.NewClient(defaultLocale),
 		aiAnalyzer:    ai.NewAnalyzer(apiKey),
 	}
 
@@ -101,12 +95,12 @@ func main() {
 	// Start server
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080"
+		port = defaultPort
 	}
 
 	fmt.Printf("🎨 Wallpaper Color Analysis API starting on port %s\n", port)
 	fmt.Printf("📍 Endpoints:\n")
-	fmt.Printf("   GET /api/colors?date=YYYY-MM-DD\n")
+	fmt.Printf("   GET /api/colors?daysAgo=0&locale=%s\n", defaultLocale)
 	fmt.Printf("   GET /health\n\n")
 
 	if err := http.ListenAndServe(":"+port, nil); err != nil {
@@ -131,65 +125,36 @@ func (app *App) handleGetColors(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Get date parameter (defaults to today if not provided)
-	dateParam := r.URL.Query().Get("date")
-	if dateParam == "" {
-		dateParam = time.Now().Format("2006-01-02")
-	}
-
-	// Validate date format
-	targetDate, err := time.Parse("2006-01-02", dateParam)
+	// Validate and parse daysAgo parameter
+	daysAgo, err := validateDaysAgo(r.URL.Query().Get("daysAgo"))
 	if err != nil {
-		respondWithError(w, http.StatusBadRequest, "Invalid date format. Use YYYY-MM-DD")
+		respondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	// Validate date is not in the future
-	today := time.Now().Truncate(24 * time.Hour)
-	if targetDate.After(today) {
-		respondWithError(w, http.StatusBadRequest, "Cannot fetch wallpaper for future dates")
+	// Validate locale parameter
+	locale, err := validateLocale(r.URL.Query().Get("locale"))
+	if err != nil {
+		respondWithError(w, http.StatusBadRequest, err.Error())
 		return
 	}
 
-	// Validate date is within last 7 days (Bing's API limitation)
-	daysAgo := int(today.Sub(targetDate).Hours() / 24)
-	if daysAgo > 7 {
-		respondWithError(w, http.StatusBadRequest, "Date too old. Bing only keeps wallpapers for the last 7 days")
-		return
-	}
-
-	// Get locale parameter (defaults to en-US if not provided)
-	locale := r.URL.Query().Get("locale")
-	if locale == "" {
-		locale = "en-US"
-	}
-
-	// Validate locale
-	if !allowedLocales[locale] {
-		respondWithError(w, http.StatusBadRequest, "Invalid locale. Supported locales: en-US, en-GB, en-CA, en-AU, en-IN, ja-JP, zh-CN, zh-TW, de-DE, fr-FR, es-ES, it-IT, pt-BR, ru-RU, ko-KR")
-		return
-	}
-
-	// Step 1: Check request cache
-	if reqEntry := app.requestCache.Get(dateParam, locale); reqEntry != nil {
-		// Request cached, now check if we have the analysis
-		if analysisEntry := app.analysisCache.Get(reqEntry.ImageHash); analysisEntry != nil {
-			response := ColorTheme{
-				Date:          dateParam,
-				Images:        reqEntry.ImageURLs,
-				Colors:        analysisEntry.Colors,
-				Copyright:     reqEntry.Copyright,
-				CopyrightLink: reqEntry.CopyrightLink,
-				CachedAt:      time.Now().Format(time.RFC3339),
+	// Step 1: Check request cache (with TTL validation)
+	if reqEntry := app.requestCache.Get(locale, daysAgo); reqEntry != nil {
+		// Check if cache is still valid (not past the expiration time)
+		if time.Now().Before(reqEntry.ExpiresAt) {
+			// Request cached, now check if we have the analysis
+			if analysisEntry := app.analysisCache.Get(reqEntry.ImageHash); analysisEntry != nil {
+				response := buildColorTheme(reqEntry, analysisEntry)
+				respondWithJSON(w, http.StatusOK, response)
+				return
 			}
-			respondWithJSON(w, http.StatusOK, response)
-			return
 		}
 	}
 
 	// Step 2: Download wallpaper metadata and image from Bing
 	app.bingClient.SetLocale(locale)
-	imageData, info, err := app.bingClient.GetWallpaper(dateParam)
+	imageData, info, err := app.bingClient.GetWallpaperByDaysAgo(daysAgo)
 	if err != nil {
 		log.Printf("Failed to download wallpaper: %v", err)
 		respondWithError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to download wallpaper: %v", err))
@@ -207,19 +172,12 @@ func (app *App) handleGetColors(w http.ResponseWriter, r *http.Request) {
 		// Analysis exists! Just cache the request metadata and return
 		log.Printf("Analysis cache hit for image hash: %s", imageHash)
 
-		if err := app.requestCache.Set(dateParam, locale, imageHash, info.ImageURLs, info.Title, info.Copyright, info.CopyrightLink); err != nil {
+		expiresAt := getNextHourBoundary()
+		if err := app.requestCache.Set(locale, daysAgo, imageHash, info.ImageURLs, info.Title, info.Copyright, info.CopyrightLink, info.StartDate, info.FullStartDate, info.EndDate, expiresAt); err != nil {
 			log.Printf("Failed to cache request: %v", err)
 		}
 
-		response := ColorTheme{
-			Date:          dateParam,
-			Images:        info.ImageURLs,
-			Colors:        analysisEntry.Colors,
-			Title:         info.Title,
-			Copyright:     info.Copyright,
-			CopyrightLink: info.CopyrightLink,
-			CachedAt:      time.Now().Format(time.RFC3339),
-		}
+		response := buildColorThemeFromInfo(info, analysisEntry)
 		respondWithJSON(w, http.StatusOK, response)
 		return
 	}
@@ -233,19 +191,12 @@ func (app *App) handleGetColors(w http.ResponseWriter, r *http.Request) {
 	if analysisEntry := app.analysisCache.Get(imageHash); analysisEntry != nil {
 		log.Printf("Analysis completed by another request for image hash: %s", imageHash)
 
-		if err := app.requestCache.Set(dateParam, locale, imageHash, info.ImageURLs, info.Title, info.Copyright, info.CopyrightLink); err != nil {
+		expiresAt := getNextHourBoundary()
+		if err := app.requestCache.Set(locale, daysAgo, imageHash, info.ImageURLs, info.Title, info.Copyright, info.CopyrightLink, info.StartDate, info.FullStartDate, info.EndDate, expiresAt); err != nil {
 			log.Printf("Failed to cache request: %v", err)
 		}
 
-		response := ColorTheme{
-			Date:          dateParam,
-			Images:        info.ImageURLs,
-			Colors:        analysisEntry.Colors,
-			Title:         info.Title,
-			Copyright:     info.Copyright,
-			CopyrightLink: info.CopyrightLink,
-			CachedAt:      time.Now().Format(time.RFC3339),
-		}
+		response := buildColorThemeFromInfo(info, analysisEntry)
 		respondWithJSON(w, http.StatusOK, response)
 		return
 	}
@@ -253,12 +204,6 @@ func (app *App) handleGetColors(w http.ResponseWriter, r *http.Request) {
 	// Step 7: Analyze colors with AI (image already downloaded)
 	log.Printf("Starting AI analysis for image hash: %s", imageHash)
 	colors, err := app.aiAnalyzer.AnalyzeColors(imageData, imageHash, info.Title, info.Copyright)
-	if err != nil {
-		log.Printf("Failed to download wallpaper: %v", err)
-		respondWithError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to download wallpaper: %v", err))
-		return
-	}
-
 	if err != nil {
 		log.Printf("Failed to analyze colors: %v", err)
 		respondWithError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to analyze colors: %v", err))
@@ -273,13 +218,16 @@ func (app *App) handleGetColors(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Step 9: Store request metadata in cache
-	if err := app.requestCache.Set(dateParam, locale, imageHash, info.ImageURLs, info.Title, info.Copyright, info.CopyrightLink); err != nil {
+	expiresAt := getNextHourBoundary()
+	if err := app.requestCache.Set(locale, daysAgo, imageHash, info.ImageURLs, info.Title, info.Copyright, info.CopyrightLink, info.StartDate, info.FullStartDate, info.EndDate, expiresAt); err != nil {
 		log.Printf("Failed to cache request: %v", err)
 	}
 
 	// Step 10: Return response
 	response := ColorTheme{
-		Date:          dateParam,
+		StartDate:     info.StartDate,
+		FullStartDate: info.FullStartDate,
+		EndDate:       info.EndDate,
 		Images:        info.ImageURLs,
 		Colors:        colors,
 		Title:         info.Title,
@@ -289,6 +237,85 @@ func (app *App) handleGetColors(w http.ResponseWriter, r *http.Request) {
 	}
 
 	respondWithJSON(w, http.StatusOK, response)
+}
+
+// validateDaysAgo validates the daysAgo parameter
+func validateDaysAgo(daysAgoParam string) (int, error) {
+	// Default to today (0 days ago) if not provided
+	if daysAgoParam == "" {
+		return 0, nil
+	}
+
+	// Parse as integer
+	var daysAgo int
+	_, err := fmt.Sscanf(daysAgoParam, "%d", &daysAgo)
+	if err != nil {
+		return 0, fmt.Errorf("Invalid daysAgo parameter. Must be an integer")
+	}
+
+	// Validate range
+	if daysAgo < 0 {
+		return 0, fmt.Errorf("daysAgo cannot be negative")
+	}
+
+	if daysAgo > maxDaysBack {
+		return 0, fmt.Errorf("daysAgo too large. Bing only keeps wallpapers for the last %d days", maxDaysBack)
+	}
+
+	return daysAgo, nil
+}
+
+// validateLocale validates the locale parameter
+func validateLocale(locale string) (string, error) {
+	// Default to en-US if not provided
+	if locale == "" {
+		return defaultLocale, nil
+	}
+
+	// Check if locale is allowed
+	for _, allowed := range allowedLocales {
+		if locale == allowed {
+			return locale, nil
+		}
+	}
+
+	return "", fmt.Errorf("Invalid locale. Supported locales: %s", strings.Join(allowedLocales, ", "))
+}
+
+// buildColorTheme creates a ColorTheme response from cache entries
+func buildColorTheme(reqEntry *cache.RequestEntry, analysisEntry *cache.AnalysisEntry) ColorTheme {
+	return ColorTheme{
+		StartDate:     reqEntry.StartDate,
+		FullStartDate: reqEntry.FullStartDate,
+		EndDate:       reqEntry.EndDate,
+		Images:        reqEntry.ImageURLs,
+		Colors:        analysisEntry.Colors,
+		Title:         reqEntry.Title,
+		Copyright:     reqEntry.Copyright,
+		CopyrightLink: reqEntry.CopyrightLink,
+		CachedAt:      time.Now().Format(time.RFC3339),
+	}
+}
+
+// buildColorThemeFromInfo creates a ColorTheme response from wallpaper info and analysis
+func buildColorThemeFromInfo(info *bing.WallpaperInfo, analysisEntry *cache.AnalysisEntry) ColorTheme {
+	return ColorTheme{
+		StartDate:     info.StartDate,
+		FullStartDate: info.FullStartDate,
+		EndDate:       info.EndDate,
+		Images:        info.ImageURLs,
+		Colors:        analysisEntry.Colors,
+		Title:         info.Title,
+		Copyright:     info.Copyright,
+		CopyrightLink: info.CopyrightLink,
+		CachedAt:      time.Now().Format(time.RFC3339),
+	}
+}
+
+// getNextHourBoundary returns the time at the start of the next hour
+func getNextHourBoundary() time.Time {
+	now := time.Now()
+	return now.Truncate(time.Hour).Add(time.Hour)
 }
 
 // respondWithJSON is a helper to send JSON responses
