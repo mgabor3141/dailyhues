@@ -43,11 +43,11 @@ Both parameters are optional. `daysAgo` defaults to `0` (today), `locale` defaul
     "800x600": "https://www.bing.com/th?id=OHR.Example_800x600.jpg"
   },
   "colors": {
-    "gradient-angle": 135,
-    "gradient-from": "#c67d3a",
-    "gradient-to": "#6b8d7d",
+    "gradient_angle": 135,
+    "gradient_from": "#c67d3a",
+    "gradient_to": "#6b8d7d",
     "highlight": "#d89543",
-    "menubar-background": "#1a1612"
+
   },
   "title": "Finland's living peatland",
   "copyright": "Aerial view of peatland in Martimoaapa Mire Reserve, Finland (© romikatarina/Shutterstock)",

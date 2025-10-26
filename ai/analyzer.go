@@ -20,22 +20,15 @@ const (
 	openRouterURL       = "https://openrouter.ai/api/v1/chat/completions"
 	claudeModel         = "anthropic/claude-sonnet-4.5"
 	aiRequestTimeout    = 60 * time.Second
-	colorAnalysisPrompt = `You are a professional UI and UX designer with a background in color theory. Analyze this wallpaper image and extract a color palette suitable for UI theming.
+	colorAnalysisPrompt = `You are a professional UI and UX designer with a background in color theory. Please provide a color palette that will work well for the desktop user interface against this wallpaper. Make sure that there is always sufficient contrast between the color you choose and the part of the wallpaper that will be adjacent to it.
 
-Image context:
-- Title: %s
-- Copyright: %s
-
-Please provide prominent colors from the image with meaningful names for their usage.
 Include colors for:
-- menubar-background: Background color for the menubar along the top edge of the screen. Should be close to full black, but can have a slight hue to match the wallpaper better.
-- highlight: Main accent/highlight color, will be used as the selected workspace, some buttons, and potentially the focused window border. Must look good as a background color behind black text
-- gradient-from: Starting color for a gradient, which will be used as the alternative color for the focused window border
-- gradient-to: Ending color for the same gradient
-- gradient-angle: Angle for the gradient
+- "highlight": Main accent/highlight color, will be used as the selected workspace, and for some buttons. Must look good as a background color behind black text! Make sure it stands out compared to the top part of the wallpaper.
+- "gradient_from" and "gradient_to": Continue with the same theme and come up with a gradient that will be used as the color for the focused window's border. Make sure all parts of the gradient pop against the background! Use colors that are at least somewhat vibrant because of this, avoid grays if possible. The top of the gradient can match the highlight color.
+- "gradient_angle": Angle for the gradient
 
 Return your response as a JSON object with color names as keys and hex codes as values (including the # symbol).
-Example format: {"menubar_background": "#1a73e8", "highlight": "#2b3442", "gradient-from": "#34495e", "gradient-to": "#456789", "gradient-angle": 45}
+Example format: {"highlight": "#2b3442", "gradient_from": "#34495e", "gradient_to": "#456789", "gradient_angle": 45, "menubar_background": "#1a73e8"}
 
 Only return the JSON object, nothing else. Do not use any formatting or additional text.`
 )
