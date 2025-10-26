@@ -134,3 +134,12 @@ func (c *AnalysisCache) GetMutex(imageHash string) *sync.Mutex {
 	c.processing[imageHash] = mu
 	return mu
 }
+
+// ReleaseMutex removes the mutex for a specific image hash from the processing map
+// This should be called after analysis is complete to prevent memory leaks
+func (c *AnalysisCache) ReleaseMutex(imageHash string) {
+	c.processingL.Lock()
+	defer c.processingL.Unlock()
+
+	delete(c.processing, imageHash)
+}

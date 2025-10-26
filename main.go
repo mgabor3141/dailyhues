@@ -103,7 +103,14 @@ func main() {
 	fmt.Printf("   GET /api/colors?daysAgo=0&locale=%s\n", defaultLocale)
 	fmt.Printf("   GET /health\n\n")
 
-	if err := http.ListenAndServe(":"+port, nil); err != nil {
+	server := &http.Server{
+		Addr:         ":" + port,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 30 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
 }
@@ -186,6 +193,7 @@ func (app *App) handleGetColors(w http.ResponseWriter, r *http.Request) {
 	imageMutex := app.analysisCache.GetMutex(imageHash)
 	imageMutex.Lock()
 	defer imageMutex.Unlock()
+	defer app.analysisCache.ReleaseMutex(imageHash)
 
 	// Step 6: Double-check analysis cache (another goroutine might have completed)
 	if analysisEntry := app.analysisCache.Get(imageHash); analysisEntry != nil {
@@ -250,7 +258,7 @@ func validateDaysAgo(daysAgoParam string) (int, error) {
 	var daysAgo int
 	_, err := fmt.Sscanf(daysAgoParam, "%d", &daysAgo)
 	if err != nil {
-		return 0, fmt.Errorf("Invalid daysAgo parameter. Must be an integer")
+		return 0, fmt.Errorf("invalid daysAgo parameter. Must be an integer")
 	}
 
 	// Validate range
@@ -279,7 +287,7 @@ func validateLocale(locale string) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("Invalid locale. Supported locales: %s", strings.Join(allowedLocales, ", "))
+	return "", fmt.Errorf("invalid locale. Supported locales: %s", strings.Join(allowedLocales, ", "))
 }
 
 // buildColorTheme creates a ColorTheme response from cache entries

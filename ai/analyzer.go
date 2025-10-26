@@ -104,19 +104,19 @@ type openRouterResponse struct {
 
 // debugResponse contains the full debug information for an AI call
 type debugResponse struct {
-	Timestamp    string              `json:"timestamp"`
-	ImageHash    string              `json:"image_hash"`
-	ImageName    string              `json:"image_name"`
-	ImageSize    int                 `json:"image_size_bytes"`
-	Model        string              `json:"model"`
-	Content      string              `json:"content"`
-	ParsedColors map[string]any      `json:"parsed_colors"`
-	Usage        map[string]int      `json:"usage,omitempty"`
-	RawResponse  *openRouterResponse `json:"raw_response"`
+	Timestamp    string                 `json:"timestamp"`
+	ImageHash    string                 `json:"image_hash"`
+	ImageName    string                 `json:"image_name"`
+	ImageSize    int                    `json:"image_size_bytes"`
+	Model        string                 `json:"model"`
+	Content      string                 `json:"content"`
+	ParsedColors map[string]interface{} `json:"parsed_colors"`
+	Usage        map[string]int         `json:"usage,omitempty"`
+	RawResponse  *openRouterResponse    `json:"raw_response"`
 }
 
 // saveDebugResponse saves the AI response to a debug file
-func (a *Analyzer) saveDebugResponse(imageHash string, imageName string, imageSize int, apiResp *openRouterResponse, colors map[string]any) error {
+func (a *Analyzer) saveDebugResponse(imageHash string, imageName string, imageSize int, apiResp *openRouterResponse, colors map[string]interface{}) error {
 	// Create debug directory if it doesn't exist
 	debugDir := "debug_responses"
 	if err := os.MkdirAll(debugDir, 0755); err != nil {

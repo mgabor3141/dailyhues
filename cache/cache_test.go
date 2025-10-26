@@ -394,6 +394,48 @@ func TestAnalysisCache_GetMutex(t *testing.T) {
 }
 
 // TestAnalysisCache_ConcurrentBlocking tests that concurrent requests for same image block
+func TestAnalysisCache_ReleaseMutex(t *testing.T) {
+	tmpDir := t.TempDir()
+	cache, err := NewAnalysisCache(tmpDir)
+	if err != nil {
+		t.Fatalf("Failed to create cache: %v", err)
+	}
+
+	imageHash := "release123456789012345678901234567890123456789012345678901234"
+
+	// Get mutex for the first time
+	mu1 := cache.GetMutex(imageHash)
+	if mu1 == nil {
+		t.Fatal("Expected non-nil mutex")
+	}
+
+	// Get same mutex again (should be same instance)
+	mu2 := cache.GetMutex(imageHash)
+	if mu1 != mu2 {
+		t.Error("Expected same mutex instance before release")
+	}
+
+	// Release the mutex
+	cache.ReleaseMutex(imageHash)
+
+	// Get mutex again (should be a NEW instance after release)
+	mu3 := cache.GetMutex(imageHash)
+	if mu3 == nil {
+		t.Fatal("Expected non-nil mutex after release")
+	}
+
+	if mu1 == mu3 {
+		t.Error("Expected different mutex instance after release (memory leak - mutex not cleaned up)")
+	}
+
+	// Verify we can still use the new mutex
+	mu3.Lock()
+	mu3.Unlock()
+
+	// Test that releasing a non-existent mutex doesn't panic
+	cache.ReleaseMutex("nonexistent_hash_that_was_never_created_123456789012345678")
+}
+
 func TestAnalysisCache_ConcurrentBlocking(t *testing.T) {
 	tmpDir := t.TempDir()
 	cache, err := NewAnalysisCache(tmpDir)
@@ -432,7 +474,6 @@ func TestAnalysisCache_ConcurrentBlocking(t *testing.T) {
 
 		mu := cache.GetMutex(imageHash)
 		mu.Lock()
-		//lint:ignore SA2001 Intentionally empty critical section - we're only testing blocking behavior
 		mu.Unlock()
 
 		finished <- 2
