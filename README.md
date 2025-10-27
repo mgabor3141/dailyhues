@@ -2,20 +2,33 @@
 
 Get an AI-extracted color palette with Bing's wallpaper of the day.
 
-Free public instance hosted for your convenience at [dailyhues.mgabor.hu](https://dailyhues.mgabor.hu) (for the `en-US` locale).
+Here's an example of what you can do with the palette:
 
-## API
+<img width="2560" height="1440" alt="image" src="https://github.com/user-attachments/assets/27e5fafc-2607-4419-a5e0-151d068fe6f2" />
 
-```shell
+## Usage
+
+I host a public instance at [dailyhues.mgabor.hu](https://dailyhues.mgabor.hu) (for the `en-US` locale).
+
+Use the API to get today's wallpaper and a matching color gradient. The palette is designed to always fit well with the wallpaper, and can be used for styling UI elements.
+
+```sh
 curl https://dailyhues.mgabor.hu/api/colors
 ```
 
 Requests take about 30 seconds if noone has requested the wallpaper today (downloads wallpaper and asks AI for colors). Subsequent requests are instant (cached).
 
+With the response data, you can:
+  - Download the wallpaper for your screen size
+  - Apply the gradient itself to the focused window's border
+  - Apply any of the two colors as a highlight color for UI elements. `gradient_from` is meant to be used near the top of the screen (e.g. waybar), and `gradient_to` near the bottom
+
+You can find a practical example for how I achieved this in my [dotfiles](https://github.com/mgabor3141/dots/blob/e933ff2f997f5d121971033f4b6e6736d3684c19/.local/bin/bing-wallpaper.sh) repository.
+
 ### Parameters
 
-```shell
-curl https://dailyhues.mgabor.hu/api/colors?locale=en-US&daysAgo=0`
+```sh
+curl https://dailyhues.mgabor.hu/api/colors?locale=en-US&daysAgo=0
 ```
 
 Both parameters are optional. `daysAgo` defaults to `0` (today), `locale` defaults to `en-US`.
@@ -56,7 +69,8 @@ Locales available from Bing: `en-US`, `en-GB`, `en-CA`, `en-AU`, `en-IN`, `ja-JP
 
 ### Docker
 
-Build and run locally:
+Build and run image
+
 ```bash
 docker build -t dailyhues .
 docker run -p 8080:8080 -e OPENROUTER_API_KEY=your_key dailyhues
@@ -64,15 +78,15 @@ docker run -p 8080:8080 -e OPENROUTER_API_KEY=your_key dailyhues
 
 ### Local
 
-Use [devenv.sh](https://devenv.sh/) to install dependencies and run the server
+Use [devenv.sh](https://devenv.sh/) to install development dependencies automatically and run the binary
 
-1. **Add your API key to `.env` file:**
+1. Add your API key to `.env` file:
 ```bash
 # Copy .env.example and add your OpenRouter API key
 OPENROUTER_API_KEY=your_actual_api_key_here
 ```
 
-2. **Run the server:**
+2. Run the server:
 ```bash
 dev
 ```
