@@ -15,6 +15,14 @@ OPENROUTER_API_KEY=your_actual_api_key_here
 go run main.go
 ```
 
+### Docker
+
+Build and run locally:
+```bash
+docker build -t wallpaper-highlight .
+docker run -p 8080:8080 -e OPENROUTER_API_KEY=your_key wallpaper-highlight
+```
+
 ## API
 
 **GET** `/api/colors`
