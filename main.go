@@ -21,12 +21,8 @@ const (
 	maxDaysBack   = 7
 )
 
-// Allowed locales for Bing wallpaper API
-var allowedLocales = []string{
-	"en-US", "en-GB", "en-CA", "en-AU", "en-IN",
-	"ja-JP", "zh-CN", "zh-TW", "de-DE", "fr-FR",
-	"es-ES", "it-IT", "pt-BR", "ru-RU", "ko-KR",
-}
+// Allowed locales for Bing wallpaper API (initialized in main from env or defaults)
+var allowedLocales []string
 
 // ColorTheme represents the response with extracted colors from a wallpaper
 type ColorTheme struct {
@@ -55,6 +51,24 @@ type App struct {
 }
 
 func main() {
+	// Initialize allowed locales from environment or use defaults
+	localesEnv := os.Getenv("ALLOWED_LOCALES")
+	if localesEnv != "" {
+		allowedLocales = strings.Split(localesEnv, ",")
+		// Trim spaces from each locale
+		for i := range allowedLocales {
+			allowedLocales[i] = strings.TrimSpace(allowedLocales[i])
+		}
+		log.Printf("Using custom allowed locales from ALLOWED_LOCALES: %v", allowedLocales)
+	} else {
+		allowedLocales = []string{
+			"en-US", "en-GB", "en-CA", "en-AU", "en-IN",
+			"ja-JP", "zh-CN", "zh-TW", "de-DE", "fr-FR",
+			"es-ES", "it-IT", "pt-BR", "ru-RU", "ko-KR",
+		}
+		log.Printf("Using default allowed locales: %v", allowedLocales)
+	}
+
 	// Get OpenRouter API key from environment
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
 	if apiKey == "" {
@@ -89,6 +103,7 @@ func main() {
 	}
 
 	// Set up routes
+	http.HandleFunc("/", handleLandingPage)
 	http.HandleFunc("/api/colors", app.handleGetColors)
 	http.HandleFunc("/health", handleHealth)
 
@@ -113,6 +128,115 @@ func main() {
 	if err := server.ListenAndServe(); err != nil {
 		log.Fatalf("Server failed to start: %v", err)
 	}
+}
+
+// handleLandingPage returns a simple HTML landing page
+func handleLandingPage(w http.ResponseWriter, r *http.Request) {
+	// Only handle root path
+	if r.URL.Path != "/" {
+		http.NotFound(w, r)
+		return
+	}
+
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	html := `<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>dailyhues - Bing Wallpaper Color Palette API</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            line-height: 1.6;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 2rem;
+            color: #e6e6e6;
+            background: #0d1117;
+        }
+        h1 { color: #58a6ff; margin-bottom: 0.5rem; }
+        .subtitle { color: #8b949e; margin-top: 0; }
+        a { color: #58a6ff; text-decoration: none; }
+        a:hover { text-decoration: underline; }
+        code {
+            background: #161b22;
+            padding: 0.2rem 0.4rem;
+            border-radius: 3px;
+            font-family: 'Courier New', monospace;
+            color: #e6e6e6;
+        }
+        .code-block {
+            position: relative;
+            margin: 2rem 0;
+        }
+        pre {
+            background: #161b22;
+            border: 1px solid #30363d;
+            border-radius: 6px;
+            padding: 1rem;
+            overflow-x: auto;
+            margin: 0;
+        }
+        pre code {
+            background: none;
+            padding: 0;
+            color: #c9d1d9;
+            font-size: 0.9rem;
+        }
+        .copy-btn {
+            position: absolute;
+            top: 0.5rem;
+            right: 0.5rem;
+            background: #21262d;
+            border: 1px solid #30363d;
+            color: #c9d1d9;
+            padding: 0.4rem 0.8rem;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.85rem;
+            transition: background 0.2s;
+        }
+        .copy-btn:hover {
+            background: #30363d;
+        }
+        .copy-btn.copied {
+            color: #3fb950;
+        }
+        .links { margin-top: 2rem; }
+    </style>
+</text>
+</head>
+<body>
+    <h1>dailyhues</h1>
+    <p class="subtitle">AI-extracted color palettes from Bing's daily wallpaper</p>
+
+    <div class="code-block">
+        <button class="copy-btn" onclick="copyCode()">Copy</button>
+        <pre><code>curl https://dailyhues.mgabor.hu/api/colors</code></pre>
+    </div>
+
+    <div class="links">
+        <p><a href="https://github.com/mgabor3141/dailyhues">View on GitHub</a> for full documentation and examples</p>
+    </div>
+
+    <script>
+        function copyCode() {
+            const code = document.querySelector('pre code').textContent;
+            navigator.clipboard.writeText(code).then(() => {
+                const btn = document.querySelector('.copy-btn');
+                btn.textContent = 'Copied!';
+                btn.classList.add('copied');
+                setTimeout(() => {
+                    btn.textContent = 'Copy';
+                    btn.classList.remove('copied');
+                }, 2000);
+            });
+        }
+    </script>
+</body>
+</html>`
+	fmt.Fprint(w, html)
 }
 
 // handleHealth returns a simple health check response

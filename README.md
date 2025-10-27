@@ -2,17 +2,25 @@
 
 Get an AI-extracted color palette with Bing's wallpaper of the day.
 
+Free public instance hosted for your convenience at [dailyhues.mgabor.hu](https://dailyhues.mgabor.hu) (for the `en-US` locale).
+
 ## API
 
-**GET** `/api/colors`
+```shell
+curl https://dailyhues.mgabor.hu/api/colors
+```
 
-**GET** `/api/colors?locale=en-US&daysAgo=0`
+Requests take about 30 seconds if noone has requested the wallpaper today (downloads wallpaper and asks AI for colors). Subsequent requests are instant (cached).
+
+### Parameters
+
+```shell
+curl https://dailyhues.mgabor.hu/api/colors?locale=en-US&daysAgo=0`
+```
 
 Both parameters are optional. `daysAgo` defaults to `0` (today), `locale` defaults to `en-US`.
 
 `daysAgo` can be `0` (today), `1` (yesterday), up to `7` (7 days ago). Bing only keeps wallpapers for the last 7 days.
-
-**Allowed locales:** `en-US`, `en-GB`, `en-CA`, `en-AU`, `en-IN`, `ja-JP`, `zh-CN`, `zh-TW`, `de-DE`, `fr-FR`, `es-ES`, `it-IT`, `pt-BR`, `ru-RU`, `ko-KR`
 
 ### Example Response
 
@@ -42,9 +50,9 @@ Both parameters are optional. `daysAgo` defaults to `0` (today), `locale` defaul
 }
 ```
 
-First request for a wallpaper takes 5-30 seconds (downloads wallpaper + AI analysis). Subsequent requests are instant (cached). Bing is queried for new images every hour.
-
 ## Running Locally
+
+Locales available from Bing: `en-US`, `en-GB`, `en-CA`, `en-AU`, `en-IN`, `ja-JP`, `zh-CN`, `zh-TW`, `de-DE`, `fr-FR`, `es-ES`, `it-IT`, `pt-BR`, `ru-RU`, `ko-KR`
 
 ### Docker
 
