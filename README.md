@@ -5,6 +5,7 @@ Get an AI-extracted color palette with Bing's wallpaper of the day.
 ## API
 
 **GET** `/api/colors`
+
 **GET** `/api/colors?locale=en-US&daysAgo=0`
 
 Both parameters are optional. `daysAgo` defaults to `0` (today), `locale` defaults to `en-US`.
