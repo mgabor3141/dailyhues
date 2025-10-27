@@ -115,6 +115,11 @@ type debugResponse struct {
 
 // saveDebugResponse saves the AI response to a debug file
 func (a *Analyzer) saveDebugResponse(imageHash string, imageName string, imageSize int, apiResp *openRouterResponse, colors map[string]interface{}) error {
+	// Only save debug responses if explicitly enabled
+	if os.Getenv("DEBUG_AI_RESPONSES") != "true" {
+		return nil
+	}
+
 	// Create debug directory if it doesn't exist
 	debugDir := "debug_responses"
 	if err := os.MkdirAll(debugDir, 0755); err != nil {
@@ -219,7 +224,7 @@ func (a *Analyzer) AnalyzeColors(imageData []byte, imageHash string, title strin
 	// Set headers
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+a.apiKey)
-	req.Header.Set("HTTP-Referer", "https://github.com/mg/wallpaper-highlight")
+	req.Header.Set("HTTP-Referer", "https://github.com/mgabor3141/dailyhues")
 	req.Header.Set("X-Title", "Wallpaper Color Analysis")
 
 	// Make the request

@@ -9,9 +9,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/mgabor3141/wallpaper-highlight/ai"
-	"github.com/mgabor3141/wallpaper-highlight/bing"
-	"github.com/mgabor3141/wallpaper-highlight/cache"
+	"github.com/mgabor3141/dailyhues/ai"
+	"github.com/mgabor3141/dailyhues/bing"
+	"github.com/mgabor3141/dailyhues/cache"
 )
 
 const (

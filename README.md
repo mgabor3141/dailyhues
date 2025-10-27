@@ -1,27 +1,6 @@
-# Wallpaper Highlight
+# dailyhues
 
-Get AI-extracted color palettes from Bing's daily wallpapers.
-
-## Setup
-
-1. **Add your API key to `.env` file:**
-```bash
-# Edit .env and add your OpenRouter API key
-OPENROUTER_API_KEY=your_actual_api_key_here
-```
-
-2. **Run the server:**
-```bash
-go run main.go
-```
-
-### Docker
-
-Build and run locally:
-```bash
-docker build -t wallpaper-highlight .
-docker run -p 8080:8080 -e OPENROUTER_API_KEY=your_key wallpaper-highlight
-```
+Get an AI-extracted color palette with Bing's wallpaper of the day.
 
 ## API
 
@@ -63,3 +42,28 @@ Both parameters are optional. `daysAgo` defaults to `0` (today), `locale` defaul
 ```
 
 First request for a wallpaper takes 5-30 seconds (downloads wallpaper + AI analysis). Subsequent requests are instant (cached). Bing is queried for new images every hour.
+
+## Running Locally
+
+### Docker
+
+Build and run locally:
+```bash
+docker build -t dailyhues .
+docker run -p 8080:8080 -e OPENROUTER_API_KEY=your_key dailyhues
+```
+
+### Local
+
+Use [devenv.sh](https://devenv.sh/) to install dependencies and run the server
+
+1. **Add your API key to `.env` file:**
+```bash
+# Copy .env.example and add your OpenRouter API key
+OPENROUTER_API_KEY=your_actual_api_key_here
+```
+
+2. **Run the server:**
+```bash
+dev
+```

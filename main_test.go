@@ -5,8 +5,8 @@ import (
 	"net/http/httptest"
 	"testing"
 
-	"github.com/mgabor3141/wallpaper-highlight/bing"
-	"github.com/mgabor3141/wallpaper-highlight/cache"
+	"github.com/mgabor3141/dailyhues/bing"
+	"github.com/mgabor3141/dailyhues/cache"
 )
 
 // TestHandleGetColors_InvalidDaysAgo tests invalid daysAgo values

@@ -1,8 +1,14 @@
-{ pkgs, lib, config, inputs, ... }:
+{
+  pkgs,
+  lib,
+  config,
+  inputs,
+  ...
+}:
 
 {
   # https://devenv.sh/basics/
-  env.GREET = "wallpaper-highlight";
+  env.GREET = "dailyhues";
 
   # https://devenv.sh/packages/
   packages = [ pkgs.git ];
@@ -27,8 +33,8 @@
 
   scripts.build.exec = ''
     echo "Building binary..."
-    go build -o bin/wallpaper-highlight
-    echo "✓ Binary created at bin/wallpaper-highlight"
+    go build -o bin/dailyhues
+    echo "✓ Binary created at bin/dailyhues"
   '';
 
   scripts.test.exec = ''

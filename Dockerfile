@@ -17,7 +17,7 @@ RUN go mod download
 COPY . .
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags="-w -s" -o wallpaper-highlight .
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags="-w -s" -o dailyhues .
 
 # Runtime stage
 FROM alpine:latest
@@ -30,7 +30,7 @@ RUN addgroup -g 1000 appuser && \
 WORKDIR /app
 
 # Copy binary from builder
-COPY --from=builder /build/wallpaper-highlight .
+COPY --from=builder /build/dailyhues .
 
 # Create cache directory and set ownership
 RUN mkdir -p /app/cache_data && \
@@ -47,4 +47,4 @@ HEALTHCHECK --interval=30s --timeout=3s --start-period=5s --retries=3 \
     CMD wget --no-verbose --tries=1 --spider http://localhost:8080/health || exit 1
 
 # Run the application
-CMD ["./wallpaper-highlight"]
+CMD ["./dailyhues"]
