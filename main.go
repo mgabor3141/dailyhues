@@ -15,10 +15,10 @@ import (
 )
 
 const (
-	cacheDataDir  = "./cache_data"
-	defaultLocale = "en-US"
-	defaultPort   = "8080"
-	maxDaysBack   = 7
+	defaultCacheDir = "./cache_data"
+	defaultLocale   = "en-US"
+	defaultPort     = "8080"
+	maxDaysBack     = 7
 )
 
 // Allowed locales for Bing wallpaper API (initialized in main from env or defaults)
@@ -68,6 +68,13 @@ func main() {
 		}
 		log.Printf("Using default allowed locales: %v", allowedLocales)
 	}
+
+	// Get cache directory from environment or use default
+	cacheDataDir := os.Getenv("CACHE_DIR")
+	if cacheDataDir == "" {
+		cacheDataDir = defaultCacheDir
+	}
+	log.Printf("Using cache directory: %s", cacheDataDir)
 
 	// Get OpenRouter API key from environment
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
