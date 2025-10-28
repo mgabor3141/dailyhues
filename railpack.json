@@ -1,0 +1,17 @@
+{
+  "$schema": "https://schema.railpack.com",
+  "steps": {
+    "build": {
+      "inputs": [
+        { "step": "packages:mise" },
+        { "local": true, "include": ["go.mod", "cmd", "internal"] }
+      ],
+      "commands": [
+        { "cmd": "go build -ldflags=\"-w -s\" -o out ./cmd/dailyhues" }
+      ]
+    }
+  },
+  "deploy": {
+    "startCommand": "./out"
+  }
+}
