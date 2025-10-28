@@ -23,7 +23,7 @@ With the response data, you can:
   - Apply the gradient itself to the focused window's border
   - Apply any of the two colors as a highlight color for UI elements. `gradient_from` is meant to be used near the top of the screen (e.g. waybar), and `gradient_to` near the bottom
 
-You can find a practical example for how I achieved this in my [dotfiles](https://github.com/mgabor3141/dots/blob/e933ff2f997f5d121971033f4b6e6736d3684c19/.local/bin/bing-wallpaper.sh) repository.
+You can find a practical example for how I achieved this in my [dotfiles](https://github.com/mgabor3141/dots/blob/main/.local/bin/bing-wallpaper.sh) repository.
 
 ### Parameters
 
