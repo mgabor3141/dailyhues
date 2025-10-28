@@ -8,7 +8,7 @@ import (
 	"image"
 	"image/jpeg"
 	"io"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -167,7 +167,7 @@ func (a *Analyzer) saveDebugResponse(imageHash string, imageName string, imageSi
 		return fmt.Errorf("failed to write debug file: %w", err)
 	}
 
-	log.Printf("Debug response saved to: %s", filename)
+	slog.Info("Debug response saved", "filename", filename)
 	return nil
 }
 
@@ -225,7 +225,7 @@ func (a *Analyzer) AnalyzeColors(imageData []byte, imageHash string, title strin
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", "Bearer "+a.apiKey)
 	req.Header.Set("HTTP-Referer", "https://github.com/mgabor3141/dailyhues")
-	req.Header.Set("X-Title", "Wallpaper Color Analysis")
+	req.Header.Set("X-Title", "dailyhues")
 
 	// Make the request
 	resp, err := a.httpClient.Do(req)
@@ -271,7 +271,7 @@ func (a *Analyzer) AnalyzeColors(imageData []byte, imageHash string, title strin
 
 	// Save debug response (log error but don't fail the request)
 	if debugErr := a.saveDebugResponse(imageHash, title, len(imageData), &apiResp, colors); debugErr != nil {
-		log.Printf("Warning: Failed to save debug response: %v", debugErr)
+		slog.Error("Warning: Failed to save debug response", "error", debugErr)
 	}
 
 	return colors, nil

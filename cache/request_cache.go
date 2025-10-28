@@ -3,7 +3,7 @@ package cache
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -121,7 +121,7 @@ func (c *RequestCache) LoadAll() error {
 	}
 
 	if loaded > 0 {
-		log.Printf("Loaded %d request cache entries", loaded)
+		slog.Info("Loaded request cache entries", "count", loaded)
 	}
 
 	return nil

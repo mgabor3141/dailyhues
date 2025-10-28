@@ -3,7 +3,7 @@ package main
 import (
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 	"strings"
@@ -59,14 +59,14 @@ func main() {
 		for i := range allowedLocales {
 			allowedLocales[i] = strings.TrimSpace(allowedLocales[i])
 		}
-		log.Printf("Using custom allowed locales from ALLOWED_LOCALES: %v", allowedLocales)
+		slog.Info("Using custom allowed locales from env", "locales", allowedLocales)
 	} else {
 		allowedLocales = []string{
 			"en-US", "en-GB", "en-CA", "en-AU", "en-IN",
 			"ja-JP", "zh-CN", "zh-TW", "de-DE", "fr-FR",
 			"es-ES", "it-IT", "pt-BR", "ru-RU", "ko-KR",
 		}
-		log.Printf("Using default allowed locales: %v", allowedLocales)
+		slog.Info("Using default allowed locales", "locales", allowedLocales)
 	}
 
 	// Get cache directory from environment or use default
@@ -74,31 +74,31 @@ func main() {
 	if cacheDataDir == "" {
 		cacheDataDir = defaultCacheDir
 	}
-	log.Printf("Using cache directory: %s", cacheDataDir)
+	slog.Info("Using cache directory", "dir", cacheDataDir)
 
 	// Get OpenRouter API key from environment
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
 	if apiKey == "" {
-		log.Fatal("OPENROUTER_API_KEY environment variable is required")
+		slog.Error("OPENROUTER_API_KEY environment variable is required")
 	}
 
 	// Initialize caches
 	requestCache, err := cache.NewRequestCache(cacheDataDir)
 	if err != nil {
-		log.Fatalf("Failed to initialize request cache: %v", err)
+		slog.Error("Failed to initialize request cache", "error", err)
 	}
 
 	analysisCache, err := cache.NewAnalysisCache(cacheDataDir)
 	if err != nil {
-		log.Fatalf("Failed to initialize analysis cache: %v", err)
+		slog.Error("Failed to initialize analysis cache", "error", err)
 	}
 
 	// Load all existing cache files into memory on startup
 	if err := requestCache.LoadAll(); err != nil {
-		log.Printf("Warning: Failed to load request cache: %v", err)
+		slog.Error("Failed to load request cache", "error", err)
 	}
 	if err := analysisCache.LoadAll(); err != nil {
-		log.Printf("Warning: Failed to load analysis cache: %v", err)
+		slog.Error("Failed to load analysis cache", "error", err)
 	}
 
 	// Initialize app
@@ -120,10 +120,15 @@ func main() {
 		port = defaultPort
 	}
 
-	fmt.Printf("🎨 Wallpaper Color Analysis API starting on port %s\n", port)
-	fmt.Printf("📍 Endpoints:\n")
-	fmt.Printf("   GET /api/colors?daysAgo=0&locale=%s\n", defaultLocale)
-	fmt.Printf("   GET /health\n\n")
+	slog.Info(fmt.Sprintf(`
+
+dailyhues starting on port %s
+Endpoints:
+    GET /
+    GET /api/colors?locale=%s&daysAgo=0
+    GET /health
+
+`, port, defaultLocale))
 
 	server := &http.Server{
 		Addr:         ":" + port,
@@ -133,7 +138,7 @@ func main() {
 	}
 
 	if err := server.ListenAndServe(); err != nil {
-		log.Fatalf("Server failed to start: %v", err)
+		slog.Error("Server failed to start", "error", err)
 	}
 }
 
@@ -294,25 +299,25 @@ func (app *App) handleGetColors(w http.ResponseWriter, r *http.Request) {
 	app.bingClient.SetLocale(locale)
 	imageData, info, err := app.bingClient.GetWallpaperByDaysAgo(daysAgo)
 	if err != nil {
-		log.Printf("Failed to download wallpaper: %v", err)
+		slog.Info("Failed to download wallpaper", "error", err)
 		respondWithError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to download wallpaper: %v", err))
 		return
 	}
 
-	log.Printf("Downloaded wallpaper: %s (%d bytes)", info.Title, len(imageData))
+	slog.Info("Downloaded wallpaper", "title", info.Title, "bytes", len(imageData))
 
 	// Step 3: Generate image hash (this is our unique identifier)
 	imageHash := cache.HashImage(imageData)
-	log.Printf("Image hash: %s", imageHash)
+	slog.Info("Image hash", "hash", imageHash)
 
 	// Step 4: Check analysis cache by image hash
 	if analysisEntry := app.analysisCache.Get(imageHash); analysisEntry != nil {
 		// Analysis exists! Just cache the request metadata and return
-		log.Printf("Analysis cache hit for image hash: %s", imageHash)
+		slog.Info("Analysis cache hit for image hash", "hash", imageHash)
 
 		expiresAt := getNextHourBoundary()
 		if err := app.requestCache.Set(locale, daysAgo, imageHash, info.ImageURLs, info.Title, info.Copyright, info.CopyrightLink, info.StartDate, info.FullStartDate, info.EndDate, expiresAt); err != nil {
-			log.Printf("Failed to cache request: %v", err)
+			slog.Info("Failed to cache request", "error", err)
 		}
 
 		response := buildColorThemeFromInfo(info, analysisEntry)
@@ -328,11 +333,11 @@ func (app *App) handleGetColors(w http.ResponseWriter, r *http.Request) {
 
 	// Step 6: Double-check analysis cache (another goroutine might have completed)
 	if analysisEntry := app.analysisCache.Get(imageHash); analysisEntry != nil {
-		log.Printf("Analysis completed by another request for image hash: %s", imageHash)
+		slog.Info("Analysis completed by another request for image hash", "hash", imageHash)
 
 		expiresAt := getNextHourBoundary()
 		if err := app.requestCache.Set(locale, daysAgo, imageHash, info.ImageURLs, info.Title, info.Copyright, info.CopyrightLink, info.StartDate, info.FullStartDate, info.EndDate, expiresAt); err != nil {
-			log.Printf("Failed to cache request: %v", err)
+			slog.Info("Failed to cache request", "error", err)
 		}
 
 		response := buildColorThemeFromInfo(info, analysisEntry)
@@ -341,25 +346,25 @@ func (app *App) handleGetColors(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Step 7: Analyze colors with AI (image already downloaded)
-	log.Printf("Starting AI analysis for image hash: %s", imageHash)
+	slog.Info("Starting AI analysis for image hash", "hash", imageHash)
 	colors, err := app.aiAnalyzer.AnalyzeColors(imageData, imageHash, info.Title, info.Copyright)
 	if err != nil {
-		log.Printf("Failed to analyze colors: %v", err)
+		slog.Info("Failed to analyze colors", "error", err)
 		respondWithError(w, http.StatusInternalServerError, fmt.Sprintf("Failed to analyze colors: %v", err))
 		return
 	}
 
-	log.Printf("Extracted colors for image hash %s: %v", imageHash, colors)
+	slog.Info("Extracted colors for image hash", "hash", imageHash, "colors", colors)
 
 	// Step 8: Store analysis in cache (shared across all locales with this image)
 	if err := app.analysisCache.Set(imageHash, colors); err != nil {
-		log.Printf("Failed to cache analysis: %v", err)
+		slog.Info("Failed to cache analysis", "error", err)
 	}
 
 	// Step 9: Store request metadata in cache
 	expiresAt := getNextHourBoundary()
 	if err := app.requestCache.Set(locale, daysAgo, imageHash, info.ImageURLs, info.Title, info.Copyright, info.CopyrightLink, info.StartDate, info.FullStartDate, info.EndDate, expiresAt); err != nil {
-		log.Printf("Failed to cache request: %v", err)
+		slog.Info("Failed to cache request", "error", err)
 	}
 
 	// Step 10: Return response

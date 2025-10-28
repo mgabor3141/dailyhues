@@ -23,7 +23,7 @@
   # https://devenv.sh/scripts/
   scripts.hello.exec = ''
     echo ""
-    echo "🎨 Welcome to $GREET - Bing Wallpaper Color Analysis API"
+    echo "Welcome to $GREET - Bing Wallpaper Color Analysis API"
   '';
 
   scripts.dev.exec = ''
