@@ -51,6 +51,11 @@ type App struct {
 }
 
 func main() {
+	if os.Getenv("LOG_FORMAT") == "json" {
+		logger := slog.New(slog.NewJSONHandler(os.Stdout, nil))
+		slog.SetDefault(logger)
+	}
+
 	// Initialize allowed locales from environment or use defaults
 	localesEnv := os.Getenv("ALLOWED_LOCALES")
 	if localesEnv != "" {
