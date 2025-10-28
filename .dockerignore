@@ -18,8 +18,7 @@ debug_responses/
 
 # Tests
 *_test.go
-stress_test.sh
-test_api.sh
+test_scripts/
 
 # Documentation
 README.md
@@ -28,8 +27,6 @@ CONCURRENCY.md
 # Environment files
 .env
 .env.*
-
-
 
 # Build artifacts
 *.exe
