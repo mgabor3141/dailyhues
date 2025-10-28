@@ -28,13 +28,12 @@
 
   scripts.dev.exec = ''
     echo "Starting development server..."
-    go run main.go
+    go run ./cmd/dailyhues
   '';
 
   scripts.build.exec = ''
     echo "Building binary..."
-    go build -o bin/dailyhues
-    echo "✓ Binary created at bin/dailyhues"
+    go build -o bin/dailyhues ./cmd/dailyhues
   '';
 
   scripts.test.exec = ''
@@ -57,7 +56,6 @@
     echo "Clearing request cache..."
     rm -rf ${config.git.root}/cache_data
     rm -rf ${config.git.root}/debug_responses
-    echo "✓ Cache cleared"
   '';
 
   # https://devenv.sh/basics/

@@ -5,8 +5,8 @@
 The system uses two independent caches to optimize performance and avoid duplicate AI analysis:
 
 ### Level 1: Request Cache
-**Storage:** `cache_data/requests/YYYY-MM-DD_locale.json`  
-**Key:** `date + locale`  
+**Storage:** `cache_data/requests/YYYY-MM-DD_locale.json`
+**Key:** `date + locale`
 **Contains:** Metadata about a specific request
 - Date
 - Locale
@@ -14,8 +14,8 @@ The system uses two independent caches to optimize performance and avoid duplica
 - Image URLs (all sizes)
 
 ### Level 2: Analysis Cache
-**Storage:** `cache_data/analysis/image_hash.json`  
-**Key:** `image_hash` (SHA256 hash of image data)  
+**Storage:** `cache_data/analysis/image_hash.json`
+**Key:** `image_hash` (SHA256 hash of image data)
 **Contains:** AI analysis results
 - Image Hash (64-character hex string)
 - Named colors (highlight, primary, secondary, etc.)
@@ -30,20 +30,6 @@ Example:
 - But they're the **exact same image!**
 
 **Solution:** Hash the actual image data to detect duplicates.
-</text>
-
-<old_text line=30>
-**Without shared analysis:**
-```
-en-US request → Download image A → AI analysis (30s) → Cache
-ja-JP request → Download image A → AI analysis (30s) → Cache  ❌ Duplicate work!
-```
-
-**With two-level cache:**
-```
-en-US request → Download metadata → Image ID: "ABC123" → AI analysis (30s) → Cache by image ID
-ja-JP request → Download metadata → Image ID: "ABC123" → Cache hit! (instant) ✓
-```
 
 **Without shared analysis:**
 ```
@@ -99,11 +85,6 @@ ja-JP request → Download metadata → Image ID: "ABC123" → Cache hit! (insta
 
 ### Key Insight: Lock on Image Hash, Not Metadata
 
-**Why hash instead of Bing's image ID?**
-- Bing returns different IDs for same image across locales
-- `OHR.Example_EN-US123` vs `OHR.Example_JA-JP456` → same image!
-- Hash detects identical image content
-
 **Locking approach:**
 ```
 Mutex key: image_hash (SHA256 of image data)
@@ -116,7 +97,7 @@ Benefit: Only blocks requests analyzing the EXACT SAME image
 ```
 Time  en-US                        ja-JP
 ────────────────────────────────────────────────────────────
-T0    Download image               
+T0    Download image
 T1    Hash = "abc123..."
 T2    Analysis cache MISS
 T3    Acquire mutex(abc123) ✓
@@ -191,26 +172,6 @@ This ensures only ONE goroutine analyzes each unique image, even with hundreds o
 | **Hash hit** | MISS | HIT (via hash) | ~2s | 0 |
 | **Cold start** | MISS | MISS | ~7-35s | 1 |
 | **Concurrent (same image)** | MISS | MISS → HIT | ~7-35s (first), instant (rest) | 1 |
-
-### Real-World Example
-
-```
-09:00 - User requests en-US wallpaper
-        → Download + AI analysis (30s)
-        → Cache by image_id
-
-09:30 - User requests ja-JP wallpaper (same image, different Bing ID!)
-        → Download image (2s)
-        → Hash matches! Analysis cache HIT
-        → No AI call needed ✓
-
-09:45 - User requests de-DE wallpaper (same image, different Bing ID!)
-        → Download image (2s)
-        → Hash matches! Analysis cache HIT
-        → No AI call needed ✓
-
-Result: 3 requests, only 1 AI analysis (30s + 2s + 2s = 34s total vs 90s without optimization)
-```
 
 ## HTTP Connection Behavior
 
