@@ -8,12 +8,12 @@ Here's an example of what you can do with the palette:
 
 ## Usage
 
-I host a public instance at [dailyhues.mgabor.hu](https://dailyhues.mgabor.hu) (for the `en-US` locale).
+I host a public instance at [dailyhues.up.railway.app](https://dailyhues.up.railway.app) (for the `en-US` locale).
 
 Use the API to get today's wallpaper and a matching color gradient. The palette is designed to always fit well with the wallpaper, and can be used for styling UI elements.
 
 ```sh
-curl https://dailyhues.mgabor.hu/api/colors
+curl https://dailyhues.up.railway.app/api/colors
 ```
 
 Requests take about 30 seconds if noone has requested the wallpaper today (downloads wallpaper and asks AI for colors). Subsequent requests are instant (cached).
@@ -28,7 +28,7 @@ You can find a practical example for how I achieved this in my [dotfiles](https:
 ### Parameters
 
 ```sh
-curl https://dailyhues.mgabor.hu/api/colors?locale=en-US&daysAgo=0
+curl https://dailyhues.up.railway.app/api/colors?locale=en-US&daysAgo=0
 ```
 
 Both parameters are optional. `daysAgo` defaults to `0` (today), `locale` defaults to `en-US`.

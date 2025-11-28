@@ -230,7 +230,7 @@ func handleLandingPage(w http.ResponseWriter, r *http.Request) {
 
     <div class="code-block">
         <button class="copy-btn" onclick="copyCode()">Copy</button>
-        <pre><code>curl https://dailyhues.mgabor.hu/api/colors</code></pre>
+        <pre><code>curl <a href="https://dailyhues.up.railway.app/api/colors">https://dailyhues.up.railway.app/api/colors</a></code></pre>
     </div>
 
     <div class="links">
