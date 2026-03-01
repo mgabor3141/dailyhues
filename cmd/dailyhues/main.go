@@ -517,8 +517,7 @@ func (app *App) validateRegion(param string) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("region %q is not enabled on this instance. Available: %s",
-		param, strings.Join(app.allowedRegions, ", "))
+	return "", fmt.Errorf("region %q is not available", param)
 }
 
 // validateLanguage checks the language query param against the instance's allowed list.
@@ -539,8 +538,7 @@ func (app *App) validateLanguage(param string) (string, error) {
 		}
 	}
 
-	return "", fmt.Errorf("language %q is not enabled on this instance. Available: %s",
-		param, strings.Join(app.allowedLanguages, ", "))
+	return "", fmt.Errorf("language %q is not available", param)
 }
 
 // =============================================================================
