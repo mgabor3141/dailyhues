@@ -98,6 +98,8 @@ func TestValidateRegion(t *testing.T) {
 		{"de-DE not allowed", "de-DE", "", true},
 		{"Random text", "foobar", "", true},
 		{"Whitespace trimmed", "  global  ", "global", false},
+		{"Case insensitive", "EN-US", "en-US", false},
+		{"Case insensitive global", "Global", "global", false},
 	}
 
 	for _, tt := range tests {

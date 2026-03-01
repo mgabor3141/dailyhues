@@ -502,7 +502,8 @@ func validateDaysAgo(param string) (int, error) {
 }
 
 // validateRegion checks the region query param against the instance's allowed list.
-// Returns the default region if the param is empty.
+// Returns the default region if the param is empty. Comparison is case-insensitive;
+// the canonical casing from the config is returned.
 func (app *App) validateRegion(param string) (string, error) {
 	param = strings.TrimSpace(param)
 	if param == "" {
@@ -510,8 +511,8 @@ func (app *App) validateRegion(param string) (string, error) {
 	}
 
 	for _, allowed := range app.allowedRegions {
-		if param == allowed {
-			return param, nil
+		if strings.EqualFold(param, allowed) {
+			return allowed, nil
 		}
 	}
 
