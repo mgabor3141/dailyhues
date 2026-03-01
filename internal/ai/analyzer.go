@@ -124,13 +124,13 @@ type debugResponse struct {
 	ImageSize    int                    `json:"image_size_bytes"`
 	Model        string                 `json:"model"`
 	Content      string                 `json:"content"`
-	ParsedColors map[string]interface{} `json:"parsed_colors"`
+	ParsedColors map[string]any `json:"parsed_colors"`
 	Usage        map[string]int         `json:"usage,omitempty"`
 	RawResponse  *openRouterResponse    `json:"raw_response"`
 }
 
 // saveDebugResponse saves the AI response to a debug file
-func (a *Analyzer) saveDebugResponse(imageHash string, imageName string, imageSize int, apiResp *openRouterResponse, colors map[string]interface{}) error {
+func (a *Analyzer) saveDebugResponse(imageHash string, imageName string, imageSize int, apiResp *openRouterResponse, colors map[string]any) error {
 	// Only save debug responses if explicitly enabled
 	if os.Getenv("DEBUG_AI_RESPONSES") != "true" {
 		return nil
@@ -189,7 +189,7 @@ func (a *Analyzer) saveDebugResponse(imageHash string, imageName string, imageSi
 
 // AnalyzeColors sends an image to Claude via OpenRouter for color analysis
 // Returns a map of named hex color codes suitable for theming
-func (a *Analyzer) AnalyzeColors(imageData []byte, imageHash string, title string, copyright string) (map[string]interface{}, error) {
+func (a *Analyzer) AnalyzeColors(imageData []byte, imageHash string, title string, copyright string) (map[string]any, error) {
 	// Resize image to reduce token count
 	resizedImage, err := a.resizeImage(imageData, 540)
 	if err != nil {
@@ -385,9 +385,9 @@ func (a *Analyzer) TranslateMetadata(title, copyright, language string) (*Transl
 
 // parseColorsFromResponse extracts named color codes and other values from the AI's response
 // Returns a map with flexible value types to handle both strings (colors) and ints (angles) or other future types
-func (a *Analyzer) parseColorsFromResponse(content string) (map[string]interface{}, error) {
+func (a *Analyzer) parseColorsFromResponse(content string) (map[string]any, error) {
 	// Try to parse as JSON object first
-	var result map[string]interface{}
+	var result map[string]any
 	if err := json.Unmarshal([]byte(content), &result); err == nil {
 		return result, nil
 	}

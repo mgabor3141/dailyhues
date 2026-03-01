@@ -27,7 +27,7 @@ type ColorTheme struct {
 	FullStartDate string                 `json:"fullstartdate"`
 	EndDate       string                 `json:"enddate"`
 	Images        map[string]string      `json:"images"`
-	Colors        map[string]interface{} `json:"colors"`
+	Colors        map[string]any `json:"colors"`
 	Title         string                 `json:"title"`
 	Description   string                 `json:"description,omitempty"`
 	Copyright     string                 `json:"copyright"`
@@ -47,7 +47,7 @@ type wallpaperResult struct {
 	endDate       string
 	imageURLs     map[string]string
 	imageHash     string
-	colors        map[string]interface{}
+	colors        map[string]any
 	bingTitle     string // original Bing title
 	copyright     string
 	copyrightLink string
@@ -323,7 +323,7 @@ func (app *App) ensureResult(daysAgo int, region, language string) (*wallpaperRe
 						reqEntry.ImageHash, reqEntry.Title, reqEntry.Copyright, language,
 					)
 					if err != nil {
-						slog.Info("Translation failed on cache path", "error", err)
+						slog.Warn("Translation failed on cache path", "error", err)
 					} else {
 						result.title = title
 						result.description = desc
@@ -405,7 +405,7 @@ func (app *App) ensureResult(daysAgo int, region, language string) (*wallpaperRe
 	if language != "" {
 		title, desc, err := app.ensureTranslation(imageHash, info.Title, info.Copyright, language)
 		if err != nil {
-			slog.Info("Translation failed", "error", err)
+			slog.Warn("Translation failed", "error", err)
 		} else {
 			result.title = title
 			result.description = desc
@@ -417,7 +417,7 @@ func (app *App) ensureResult(daysAgo int, region, language string) (*wallpaperRe
 
 // ensureColorAnalysis returns colors for the given image, using the cache or
 // running AI analysis. Thread-safe via per-image mutex.
-func (app *App) ensureColorAnalysis(imageData []byte, imageHash string, info *bing.WallpaperInfo) (map[string]interface{}, error) {
+func (app *App) ensureColorAnalysis(imageData []byte, imageHash string, info *bing.WallpaperInfo) (map[string]any, error) {
 	if entry := app.analysisCache.Get(imageHash); entry != nil {
 		slog.Info("Color analysis cache hit", "hash", imageHash)
 		return entry.Colors, nil
@@ -573,7 +573,7 @@ func getNextHourBoundary() time.Time {
 	return time.Now().Truncate(time.Hour).Add(time.Hour)
 }
 
-func respondWithJSON(w http.ResponseWriter, statusCode int, data interface{}) {
+func respondWithJSON(w http.ResponseWriter, statusCode int, data any) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(statusCode)
 	json.NewEncoder(w).Encode(data)

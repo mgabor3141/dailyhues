@@ -13,7 +13,7 @@ import (
 // AnalysisEntry stores AI analysis results for a wallpaper image
 type AnalysisEntry struct {
 	ImageHash string                 `json:"image_hash"`
-	Colors    map[string]interface{} `json:"colors"`
+	Colors    map[string]any `json:"colors"`
 }
 
 // AnalysisCache manages AI analysis results cache
@@ -48,7 +48,7 @@ func (c *AnalysisCache) Get(imageHash string) *AnalysisEntry {
 }
 
 // Set stores an analysis entry and persists to disk
-func (c *AnalysisCache) Set(imageHash string, colors map[string]interface{}) error {
+func (c *AnalysisCache) Set(imageHash string, colors map[string]any) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 

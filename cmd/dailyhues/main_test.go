@@ -282,7 +282,7 @@ func TestConcurrency_AnalysisCacheSharedAcrossRegions(t *testing.T) {
 
 	imageHash := "shared789012345678901234567890123456789012345678901234567890"
 	imageURLs := map[string]string{"1920x1080": "https://bing.com/image.jpg"}
-	colors := map[string]interface{}{"gradient_from": "#FF0000"}
+	colors := map[string]any{"gradient_from": "#FF0000"}
 
 	// Store analysis once (shared)
 	if err := analysisCache.Set(imageHash, colors); err != nil {
