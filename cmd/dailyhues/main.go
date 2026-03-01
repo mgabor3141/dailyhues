@@ -87,10 +87,15 @@ func main() {
 	apiKey := os.Getenv("OPENROUTER_API_KEY")
 	if apiKey == "" {
 		slog.Error("OPENROUTER_API_KEY environment variable is required")
+		os.Exit(1)
 	}
 
 	// Parse instance configuration
 	allowedRegions := parseCSVEnv("ALLOWED_REGIONS", "global")
+	if len(allowedRegions) == 0 {
+		slog.Error("ALLOWED_REGIONS must contain at least one value")
+		os.Exit(1)
+	}
 	allowedLanguages := parseCSVEnv("ALLOWED_LANGUAGES", "English")
 
 	slog.Info("Instance configuration",
@@ -102,27 +107,33 @@ func main() {
 	requestCache, err := cache.NewRequestCache(cacheDataDir)
 	if err != nil {
 		slog.Error("Failed to initialize request cache", "error", err)
+		os.Exit(1)
 	}
 
 	analysisCache, err := cache.NewAnalysisCache(cacheDataDir)
 	if err != nil {
 		slog.Error("Failed to initialize analysis cache", "error", err)
+		os.Exit(1)
 	}
 
 	translationCache, err := cache.NewTranslationCache(cacheDataDir)
 	if err != nil {
 		slog.Error("Failed to initialize translation cache", "error", err)
+		os.Exit(1)
 	}
 
 	// Load all existing cache files into memory on startup
 	if err := requestCache.LoadAll(); err != nil {
 		slog.Error("Failed to load request cache", "error", err)
+		os.Exit(1)
 	}
 	if err := analysisCache.LoadAll(); err != nil {
 		slog.Error("Failed to load analysis cache", "error", err)
+		os.Exit(1)
 	}
 	if err := translationCache.LoadAll(); err != nil {
 		slog.Error("Failed to load translation cache", "error", err)
+		os.Exit(1)
 	}
 
 	// Determine defaults
