@@ -13,7 +13,7 @@ import (
 
 // RequestEntry stores metadata about a wallpaper request
 type RequestEntry struct {
-	Locale        string            `json:"locale"`
+	Region        string            `json:"region"`
 	DaysAgo       int               `json:"days_ago"`
 	ImageHash     string            `json:"image_hash"`
 	ImageURLs     map[string]string `json:"image_urls"`
@@ -23,8 +23,7 @@ type RequestEntry struct {
 	StartDate     string            `json:"startdate"`     // Format: YYYYMMDD (e.g., "20251019")
 	FullStartDate string            `json:"fullstartdate"` // Format: YYYYMMDDHHMM (e.g., "202510190700")
 	EndDate       string            `json:"enddate"`       // Format: YYYYMMDD (e.g., "20251020")
-	BaseImageName string            `json:"base_image_name,omitempty"` // e.g., "OHR.BalearesDay"
-	EnUSMatch     bool              `json:"en_us_match,omitempty"`     // whether en-US market had this image (global mode only)
+	EnUSMatch     bool              `json:"en_us_match"`   // whether en-US market had this image (global mode only)
 	ExpiresAt     time.Time         `json:"expires_at"`
 }
 
@@ -48,17 +47,17 @@ func NewRequestCache(cacheDir string) (*RequestCache, error) {
 	}, nil
 }
 
-// makeKey creates a cache key from locale and daysAgo
-func (c *RequestCache) makeKey(locale string, daysAgo int) string {
-	return fmt.Sprintf("%s_%d", locale, daysAgo)
+// makeKey creates a cache key from region and daysAgo
+func (c *RequestCache) makeKey(region string, daysAgo int) string {
+	return fmt.Sprintf("%s_%d", region, daysAgo)
 }
 
 // Get retrieves a request entry
-func (c *RequestCache) Get(locale string, daysAgo int) *RequestEntry {
+func (c *RequestCache) Get(region string, daysAgo int) *RequestEntry {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 
-	key := c.makeKey(locale, daysAgo)
+	key := c.makeKey(region, daysAgo)
 	return c.data[key]
 }
 
@@ -67,7 +66,7 @@ func (c *RequestCache) Set(entry *RequestEntry) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	key := c.makeKey(entry.Locale, entry.DaysAgo)
+	key := c.makeKey(entry.Region, entry.DaysAgo)
 	c.data[key] = entry
 
 	// Persist to disk
@@ -103,7 +102,7 @@ func (c *RequestCache) LoadAll() error {
 			continue
 		}
 
-		key := c.makeKey(entry.Locale, entry.DaysAgo)
+		key := c.makeKey(entry.Region, entry.DaysAgo)
 		c.data[key] = &entry
 		loaded++
 	}
@@ -117,7 +116,7 @@ func (c *RequestCache) LoadAll() error {
 
 // saveToFile persists a request entry to disk
 func (c *RequestCache) saveToFile(entry *RequestEntry) error {
-	filename := filepath.Join(c.cacheDir, fmt.Sprintf("%s_%d.json", entry.Locale, entry.DaysAgo))
+	filename := filepath.Join(c.cacheDir, fmt.Sprintf("%s_%d.json", entry.Region, entry.DaysAgo))
 
 	data, err := json.MarshalIndent(entry, "", "  ")
 	if err != nil {

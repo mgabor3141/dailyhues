@@ -371,7 +371,7 @@ func (app *App) ensureResult(daysAgo int, region, language string) (*wallpaperRe
 
 	// Cache request metadata
 	if err := app.requestCache.Set(&cache.RequestEntry{
-		Locale:        cacheKey,
+		Region:        cacheKey,
 		DaysAgo:       daysAgo,
 		ImageHash:     imageHash,
 		ImageURLs:     info.ImageURLs,
@@ -381,7 +381,6 @@ func (app *App) ensureResult(daysAgo int, region, language string) (*wallpaperRe
 		StartDate:     info.StartDate,
 		FullStartDate: info.FullStartDate,
 		EndDate:       info.EndDate,
-		BaseImageName: bing.ExtractBaseImageName(info.ImageID),
 		EnUSMatch:     enUSMatch,
 		ExpiresAt:     getNextHourBoundary(),
 	}); err != nil {

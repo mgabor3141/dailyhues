@@ -44,7 +44,7 @@ func TestRequestCache_SetAndGet(t *testing.T) {
 	startDate := "20251019"
 	fullStartDate := "202510190700"
 	endDate := "20251020"
-	err = cache.Set(&RequestEntry{Locale: locale, DaysAgo: daysAgo, ImageHash: imageHash, ImageURLs: imageURLs, Title: title, Copyright: copyright, CopyrightLink: copyrightLink, StartDate: startDate, FullStartDate: fullStartDate, EndDate: endDate, ExpiresAt: expiresAt})
+	err = cache.Set(&RequestEntry{Region: locale, DaysAgo: daysAgo, ImageHash: imageHash, ImageURLs: imageURLs, Title: title, Copyright: copyright, CopyrightLink: copyrightLink, StartDate: startDate, FullStartDate: fullStartDate, EndDate: endDate, ExpiresAt: expiresAt})
 	if err != nil {
 		t.Fatalf("Failed to set cache: %v", err)
 	}
@@ -59,8 +59,8 @@ func TestRequestCache_SetAndGet(t *testing.T) {
 		t.Errorf("Expected daysAgo %d, got %d", daysAgo, entry.DaysAgo)
 	}
 
-	if entry.Locale != locale {
-		t.Errorf("Expected locale %s, got %s", locale, entry.Locale)
+	if entry.Region != locale {
+		t.Errorf("Expected region %s, got %s", locale, entry.Region)
 	}
 
 	if entry.ImageHash != imageHash {
@@ -108,7 +108,7 @@ func TestRequestCache_Persistence(t *testing.T) {
 	startDate := "20251019"
 	fullStartDate := "202510190700"
 	endDate := "20251020"
-	err = cache1.Set(&RequestEntry{Locale: locale, DaysAgo: daysAgo, ImageHash: imageHash, ImageURLs: imageURLs, Title: title, Copyright: copyright, CopyrightLink: copyrightLink, StartDate: startDate, FullStartDate: fullStartDate, EndDate: endDate, ExpiresAt: expiresAt})
+	err = cache1.Set(&RequestEntry{Region: locale, DaysAgo: daysAgo, ImageHash: imageHash, ImageURLs: imageURLs, Title: title, Copyright: copyright, CopyrightLink: copyrightLink, StartDate: startDate, FullStartDate: fullStartDate, EndDate: endDate, ExpiresAt: expiresAt})
 	if err != nil {
 		t.Fatalf("Failed to set cache: %v", err)
 	}
@@ -157,7 +157,7 @@ func TestRequestCache_TTLExpiration(t *testing.T) {
 	fullStartDate := "202510190700"
 	endDate := "20251020"
 	pastExpiration := time.Now().Add(-1 * time.Hour)
-	err = cache.Set(&RequestEntry{Locale: locale, DaysAgo: daysAgo, ImageHash: imageHash, ImageURLs: imageURLs, Title: title, Copyright: copyright, CopyrightLink: copyrightLink, StartDate: startDate, FullStartDate: fullStartDate, EndDate: endDate, ExpiresAt: pastExpiration})
+	err = cache.Set(&RequestEntry{Region: locale, DaysAgo: daysAgo, ImageHash: imageHash, ImageURLs: imageURLs, Title: title, Copyright: copyright, CopyrightLink: copyrightLink, StartDate: startDate, FullStartDate: fullStartDate, EndDate: endDate, ExpiresAt: pastExpiration})
 	if err != nil {
 		t.Fatalf("Failed to set cache: %v", err)
 	}
@@ -173,7 +173,7 @@ func TestRequestCache_TTLExpiration(t *testing.T) {
 
 	// Test 2: Entry with expiration in the future
 	futureExpiration := time.Now().Add(1 * time.Hour)
-	err = cache.Set(&RequestEntry{Locale: locale, DaysAgo: daysAgo, ImageHash: imageHash, ImageURLs: imageURLs, Title: title, Copyright: copyright, CopyrightLink: copyrightLink, StartDate: startDate, FullStartDate: fullStartDate, EndDate: endDate, ExpiresAt: futureExpiration})
+	err = cache.Set(&RequestEntry{Region: locale, DaysAgo: daysAgo, ImageHash: imageHash, ImageURLs: imageURLs, Title: title, Copyright: copyright, CopyrightLink: copyrightLink, StartDate: startDate, FullStartDate: fullStartDate, EndDate: endDate, ExpiresAt: futureExpiration})
 	if err != nil {
 		t.Fatalf("Failed to set cache: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestRequestCache_ConcurrentAccess(t *testing.T) {
 				startDate := "20251019"
 				fullStartDate := "202510190700"
 				endDate := "20251020"
-				err := cache.Set(&RequestEntry{Locale: locale, DaysAgo: daysAgo, ImageHash: imageHash, ImageURLs: imageURLs, Title: title, Copyright: copyright, CopyrightLink: copyrightLink, StartDate: startDate, FullStartDate: fullStartDate, EndDate: endDate, ExpiresAt: expiresAt})
+				err := cache.Set(&RequestEntry{Region: locale, DaysAgo: daysAgo, ImageHash: imageHash, ImageURLs: imageURLs, Title: title, Copyright: copyright, CopyrightLink: copyrightLink, StartDate: startDate, FullStartDate: fullStartDate, EndDate: endDate, ExpiresAt: expiresAt})
 				if err != nil {
 					t.Errorf("Goroutine %d: Failed to set cache: %v", id, err)
 					return
@@ -530,13 +530,13 @@ func TestAnalysisCache_SharedImageAcrossLocales(t *testing.T) {
 	fullStartDate := "202510190700"
 	endDate := "20251020"
 	expiresAt := time.Now().Add(time.Hour)
-	err = requestCache.Set(&RequestEntry{Locale: "en-US", DaysAgo: daysAgo, ImageHash: imageHash, ImageURLs: imageURLs, Title: title, Copyright: copyright, CopyrightLink: copyrightLink, StartDate: startDate, FullStartDate: fullStartDate, EndDate: endDate, ExpiresAt: expiresAt})
+	err = requestCache.Set(&RequestEntry{Region: "en-US", DaysAgo: daysAgo, ImageHash: imageHash, ImageURLs: imageURLs, Title: title, Copyright: copyright, CopyrightLink: copyrightLink, StartDate: startDate, FullStartDate: fullStartDate, EndDate: endDate, ExpiresAt: expiresAt})
 	if err != nil {
 		t.Fatalf("Failed to set en-US request: %v", err)
 	}
 
 	// Store request metadata for ja-JP (same image hash!)
-	err = requestCache.Set(&RequestEntry{Locale: "ja-JP", DaysAgo: daysAgo, ImageHash: imageHash, ImageURLs: imageURLs, Title: title, Copyright: copyright, CopyrightLink: copyrightLink, StartDate: startDate, FullStartDate: fullStartDate, EndDate: endDate, ExpiresAt: expiresAt})
+	err = requestCache.Set(&RequestEntry{Region: "ja-JP", DaysAgo: daysAgo, ImageHash: imageHash, ImageURLs: imageURLs, Title: title, Copyright: copyright, CopyrightLink: copyrightLink, StartDate: startDate, FullStartDate: fullStartDate, EndDate: endDate, ExpiresAt: expiresAt})
 	if err != nil {
 		t.Fatalf("Failed to set ja-JP request: %v", err)
 	}

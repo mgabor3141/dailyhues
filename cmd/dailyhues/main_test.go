@@ -290,7 +290,7 @@ func TestConcurrency_AnalysisCacheSharedAcrossRegions(t *testing.T) {
 	// Store request metadata for two different regions pointing to same image
 	for _, region := range []string{"global", "en-US"} {
 		if err := requestCache.Set(&cache.RequestEntry{
-			Locale:    region,
+			Region:    region,
 			DaysAgo:   0,
 			ImageHash: imageHash,
 			ImageURLs: imageURLs,
