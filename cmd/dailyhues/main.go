@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 	"os"
+	"strconv"
 	"strings"
 	"time"
 
@@ -486,8 +487,7 @@ func validateDaysAgo(param string) (int, error) {
 		return 0, nil
 	}
 
-	var daysAgo int
-	_, err := fmt.Sscanf(param, "%d", &daysAgo)
+	daysAgo, err := strconv.Atoi(param)
 	if err != nil {
 		return 0, fmt.Errorf("invalid daysAgo parameter, must be an integer")
 	}
