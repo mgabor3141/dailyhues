@@ -102,6 +102,22 @@ func (c *RequestCache) LoadAll() error {
 			continue
 		}
 
+		// Migrate old cache files that used "locale" instead of "region"
+		if entry.Region == "" {
+			var raw map[string]json.RawMessage
+			if err := json.Unmarshal(data, &raw); err == nil {
+				if loc, ok := raw["locale"]; ok {
+					var locale string
+					if json.Unmarshal(loc, &locale) == nil {
+						entry.Region = locale
+					}
+				}
+			}
+			if entry.Region == "" {
+				continue // skip entries with no region
+			}
+		}
+
 		key := c.makeKey(entry.Region, entry.DaysAgo)
 		c.data[key] = &entry
 		loaded++
