@@ -340,7 +340,7 @@ func (app *App) ensureResult(daysAgo int, region, language string) (*wallpaperRe
 	var info *bing.WallpaperInfo
 	var enUSMatch bool
 
-	if region == "global" {
+	if strings.EqualFold(region, "global") {
 		slog.Info("Fetching global wallpaper", "daysAgo", daysAgo)
 		var matchingMarkets map[string]bool
 		var err error
