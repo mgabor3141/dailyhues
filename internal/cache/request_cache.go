@@ -30,7 +30,7 @@ type RequestEntry struct {
 // RequestCache manages request metadata cache
 type RequestCache struct {
 	mu       sync.RWMutex
-	data     map[string]*RequestEntry // key: "locale_daysago"
+	data     map[string]*RequestEntry // key: "region_daysago"
 	cacheDir string
 }
 
@@ -114,9 +114,20 @@ func (c *RequestCache) LoadAll() error {
 	return nil
 }
 
+// sanitizeRegion normalizes a region string for use in cache keys and filenames.
+// Allows only alphanumeric characters and hyphens; everything else becomes '_'.
+func sanitizeRegion(region string) string {
+	return strings.Map(func(r rune) rune {
+		if (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (r >= '0' && r <= '9') || r == '-' {
+			return r
+		}
+		return '_'
+	}, region)
+}
+
 // saveToFile persists a request entry to disk
 func (c *RequestCache) saveToFile(entry *RequestEntry) error {
-	filename := filepath.Join(c.cacheDir, fmt.Sprintf("%s_%d.json", entry.Region, entry.DaysAgo))
+	filename := filepath.Join(c.cacheDir, fmt.Sprintf("%s_%d.json", sanitizeRegion(entry.Region), entry.DaysAgo))
 
 	data, err := json.MarshalIndent(entry, "", "  ")
 	if err != nil {
