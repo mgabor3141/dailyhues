@@ -4,9 +4,22 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"log/slog"
 	"net/http"
+	"regexp"
+	"sync"
 	"time"
 )
+
+// AllMarkets contains all known Bing wallpaper markets for global wallpaper detection
+var AllMarkets = []string{
+	"en-US", "en-GB", "en-CA", "en-AU", "en-IN",
+	"ja-JP", "zh-CN", "zh-TW", "de-DE", "fr-FR",
+	"es-ES", "it-IT", "pt-BR", "ru-RU", "ko-KR",
+}
+
+// baseImageNameRegex matches the locale/ROW suffix in Bing image IDs
+var baseImageNameRegex = regexp.MustCompile(`_([A-Z]{2}-[A-Z]{2}|ROW)\d+$`)
 
 const (
 	bingAPIURL  = "https://www.bing.com/HPImageArchive.aspx"
@@ -274,4 +287,124 @@ func (c *Client) GetWallpaperByDaysAgo(daysAgo int) ([]byte, *WallpaperInfo, err
 	}
 
 	return data, info, nil
+}
+
+// ExtractBaseImageName extracts the base image name from a Bing image ID,
+// removing the locale-specific suffix (e.g., "_EN-US1234567890" or "_ROW1234567890").
+// Example: "OHR.BalearesDay_DE-DE6256697714" -> "OHR.BalearesDay"
+func ExtractBaseImageName(imageID string) string {
+	return baseImageNameRegex.ReplaceAllString(imageID, "")
+}
+
+// FindMostCommonWallpaper queries all given markets concurrently for the wallpaper
+// at the given daysAgo offset and returns the most common image's info.
+// It prefers metadata from preferredMarket if it has the same image, otherwise
+// falls back to any market with a meaningful title (not "Info").
+// matchingMarkets indicates which markets had the winning image.
+func (c *Client) FindMostCommonWallpaper(daysAgo int, markets []string, preferredMarket string) (imageData []byte, info *WallpaperInfo, matchingMarkets map[string]bool, err error) {
+	type result struct {
+		market string
+		info   *WallpaperInfo
+		err    error
+	}
+
+	var wg sync.WaitGroup
+	ch := make(chan result, len(markets))
+
+	for _, market := range markets {
+		wg.Add(1)
+		go func(mkt string) {
+			defer wg.Done()
+			client := &Client{httpClient: c.httpClient, market: mkt}
+			info, err := client.GetWallpaperInfoByDaysAgo(daysAgo)
+			ch <- result{mkt, info, err}
+		}(market)
+	}
+
+	// Close channel when all goroutines complete
+	go func() {
+		wg.Wait()
+		close(ch)
+	}()
+
+	// Collect results grouped by base image name
+	type imageGroup struct {
+		count int
+		infos map[string]*WallpaperInfo // market -> info
+	}
+	groups := make(map[string]*imageGroup)
+
+	for r := range ch {
+		if r.err != nil {
+			slog.Info("Failed to fetch wallpaper from market", "market", r.market, "error", r.err)
+			continue
+		}
+		baseName := ExtractBaseImageName(r.info.ImageID)
+		if groups[baseName] == nil {
+			groups[baseName] = &imageGroup{infos: make(map[string]*WallpaperInfo)}
+		}
+		groups[baseName].count++
+		groups[baseName].infos[r.market] = r.info
+	}
+
+	// Find most common image
+	var bestName string
+	var bestCount int
+	for name, group := range groups {
+		if group.count > bestCount {
+			bestName = name
+			bestCount = group.count
+		}
+	}
+
+	if bestName == "" {
+		return nil, nil, nil, fmt.Errorf("no wallpaper found across any market")
+	}
+
+	slog.Info("Found most common wallpaper", "baseName", bestName, "count", bestCount, "totalMarkets", len(markets))
+
+	// Pick the best metadata source from the winning group
+	group := groups[bestName]
+	var selectedInfo *WallpaperInfo
+
+	// 1. Prefer the user's locale market
+	if info, ok := group.infos[preferredMarket]; ok && info.Title != "Info" {
+		selectedInfo = info
+	}
+
+	// 2. Fall back to any market with a meaningful title
+	if selectedInfo == nil {
+		for _, info := range group.infos {
+			if info.Title != "Info" {
+				selectedInfo = info
+				break
+			}
+		}
+	}
+
+	// 3. Last resort: any market at all
+	if selectedInfo == nil {
+		for _, info := range group.infos {
+			selectedInfo = info
+			break
+		}
+	}
+
+	if selectedInfo == nil {
+		return nil, nil, nil, fmt.Errorf("unexpected: no info in most common group")
+	}
+
+	// Build matching markets map
+	matchingMarkets = make(map[string]bool, len(group.infos))
+	for mkt := range group.infos {
+		matchingMarkets[mkt] = true
+	}
+
+	// Download the image
+	data, err := c.DownloadWallpaper(selectedInfo)
+	if err != nil {
+		return nil, nil, nil, fmt.Errorf("failed to download global wallpaper: %w", err)
+	}
+
+	return data, selectedInfo, matchingMarkets, nil
 }

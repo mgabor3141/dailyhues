@@ -19,6 +19,7 @@ import (
 const (
 	openRouterURL       = "https://openrouter.ai/api/v1/chat/completions"
 	claudeModel         = "anthropic/claude-sonnet-4.5"
+	translationModel    = "anthropic/claude-sonnet-4.5"
 	aiRequestTimeout    = 60 * time.Second
 	colorAnalysisPrompt = `You are a professional UI/UX designer and artist with a strong background in color theory and accessibility guidelines. You are working on the theme for a desktop window manager, and need to design a gradient for when the attached image is set as the desktop wallpaper. Please design a gradient that will work well as the color for the focused window's border!
 
@@ -36,7 +37,22 @@ const (
 Reply only with a JSON object with the following format. Do not include any additional text or comments.
 
 {"gradient_from": "#34495e", "gradient_to": "#456789", "gradient_angle": 45}`
+
+	translationPrompt = `Given the following metadata about a Bing wallpaper image, provide a clean title and a short subtitle describing the location or subject of the image. Write both in %s.
+
+Image title: %s
+Image copyright: %s
+
+Reply only with a JSON object with the following format. Do not include any additional text or comments.
+
+{"title": "Clean descriptive title", "description": "Short subtitle about the location or subject"}`
 )
+
+// TranslationResult contains the translated title and description
+type TranslationResult struct {
+	Title       string `json:"title"`
+	Description string `json:"description"`
+}
 
 // Analyzer handles AI-powered color analysis of images
 type Analyzer struct {
@@ -57,7 +73,7 @@ func NewAnalyzer(apiKey string) *Analyzer {
 // openRouterRequest represents the request format for OpenRouter API
 type openRouterRequest struct {
 	Model     string    `json:"model"`
-	Reasoning reasoning `json:"reasoning"`
+	Reasoning reasoning `json:"reasoning,omitempty"`
 	Messages  []message `json:"messages"`
 	MaxTokens int       `json:"max_tokens"`
 }
@@ -202,7 +218,7 @@ func (a *Analyzer) AnalyzeColors(imageData []byte, imageHash string, title strin
 					},
 					{
 						Type: "text",
-						Text: fmt.Sprintf(colorAnalysisPrompt, title, copyright),
+						Text: colorAnalysisPrompt,
 					},
 				},
 			},
@@ -275,6 +291,96 @@ func (a *Analyzer) AnalyzeColors(imageData []byte, imageHash string, title strin
 	}
 
 	return colors, nil
+}
+
+// TranslateMetadata sends a lightweight text-only request to translate/clean up
+// the wallpaper title and copyright into a clean title and description in the
+// given language. This is much cheaper than the image analysis call (no image tokens).
+func (a *Analyzer) TranslateMetadata(title, copyright, language string) (*TranslationResult, error) {
+	promptText := fmt.Sprintf(translationPrompt, language, title, copyright)
+
+	reqBody := openRouterRequest{
+		Model:     translationModel,
+		MaxTokens: 1024,
+		Messages: []message{
+			{
+				Role: "user",
+				Content: []contentPart{
+					{
+						Type: "text",
+						Text: promptText,
+					},
+				},
+			},
+		},
+	}
+
+	jsonData, err := json.Marshal(reqBody)
+	if err != nil {
+		return nil, fmt.Errorf("failed to marshal request: %w", err)
+	}
+
+	req, err := http.NewRequest("POST", openRouterURL, bytes.NewBuffer(jsonData))
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+a.apiKey)
+	req.Header.Set("HTTP-Referer", "https://github.com/mgabor3141/dailyhues")
+	req.Header.Set("X-Title", "dailyhues")
+
+	resp, err := a.httpClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send translation request: %w", err)
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to read response: %w", err)
+	}
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("OpenRouter API returned status %d: %s", resp.StatusCode, string(body))
+	}
+
+	var apiResp openRouterResponse
+	if err := json.Unmarshal(body, &apiResp); err != nil {
+		return nil, fmt.Errorf("failed to parse response: %w", err)
+	}
+
+	if apiResp.Error != nil {
+		return nil, fmt.Errorf("OpenRouter API error: %s (code: %s)", apiResp.Error.Message, apiResp.Error.Code)
+	}
+
+	if len(apiResp.Choices) == 0 {
+		return nil, fmt.Errorf("no response from AI model")
+	}
+
+	content := apiResp.Choices[0].Message.Content
+
+	// Parse the JSON response
+	parsed, err := a.parseColorsFromResponse(content)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse translation response: %w", err)
+	}
+
+	result := &TranslationResult{}
+	if t, ok := parsed["title"].(string); ok {
+		result.Title = t
+	}
+	if d, ok := parsed["description"].(string); ok {
+		result.Description = d
+	}
+
+	if result.Title == "" {
+		return nil, fmt.Errorf("AI did not return a title in translation response")
+	}
+
+	slog.Info("Translation complete", "language", language, "title", result.Title)
+
+	return result, nil
 }
 
 // parseColorsFromResponse extracts named color codes and other values from the AI's response

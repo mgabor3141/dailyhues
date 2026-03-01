@@ -9,21 +9,33 @@ import (
 	"github.com/mgabor3141/dailyhues/internal/cache"
 )
 
-// TestHandleGetColors_InvalidDaysAgo tests invalid daysAgo values
-func TestHandleGetColors_InvalidDaysAgo(t *testing.T) {
+// newTestApp creates an App with test defaults for use in handler tests
+func newTestApp(t *testing.T) *App {
+	t.Helper()
 	tmpDir := t.TempDir()
+
 	requestCache, _ := cache.NewRequestCache(tmpDir)
 	analysisCache, _ := cache.NewAnalysisCache(tmpDir)
+	translationCache, _ := cache.NewTranslationCache(tmpDir)
 
-	app := &App{
-		requestCache:  requestCache,
-		analysisCache: analysisCache,
-		bingClient:    bing.NewClient(defaultLocale),
+	return &App{
+		requestCache:     requestCache,
+		analysisCache:    analysisCache,
+		translationCache: translationCache,
+		bingClient:       bing.NewClient("en-US"),
+		allowedRegions:   []string{"global", "en-US"},
+		allowedLanguages: []string{"English"},
+		defaultRegion:    "global",
+		defaultLanguage:  "English",
 	}
+}
 
+// --- daysAgo validation ---
+
+func TestValidateDaysAgo_Invalid(t *testing.T) {
 	tests := []struct {
-		name    string
-		daysAgo string
+		name string
+		param string
 	}{
 		{"Not a number", "invalid"},
 		{"Negative", "-1"},
@@ -32,154 +44,198 @@ func TestHandleGetColors_InvalidDaysAgo(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("GET", "/api/colors?daysAgo="+tt.daysAgo, nil)
-			w := httptest.NewRecorder()
-
-			app.handleGetColors(w, req)
-
-			if w.Code != http.StatusBadRequest {
-				t.Errorf("Expected status 400, got %d", w.Code)
+			_, err := validateDaysAgo(tt.param)
+			if err == nil {
+				t.Error("Expected error for invalid daysAgo")
 			}
 		})
 	}
 }
 
-// TestHandleGetColors_DaysAgoTooLarge tests that daysAgo > 7 is rejected
-func TestHandleGetColors_DaysAgoTooLarge(t *testing.T) {
-	tmpDir := t.TempDir()
-	requestCache, _ := cache.NewRequestCache(tmpDir)
-	analysisCache, _ := cache.NewAnalysisCache(tmpDir)
-
-	app := &App{
-		requestCache:  requestCache,
-		analysisCache: analysisCache,
-		bingClient:    bing.NewClient(defaultLocale),
-	}
-
-	req := httptest.NewRequest("GET", "/api/colors?daysAgo=8", nil)
-	w := httptest.NewRecorder()
-
-	app.handleGetColors(w, req)
-
-	if w.Code != http.StatusBadRequest {
-		t.Errorf("Expected status 400 for daysAgo too large, got %d", w.Code)
-	}
-}
-
-// TestHandleGetColors_ValidDaysAgo tests valid daysAgo values
-func TestHandleGetColors_ValidDaysAgo(t *testing.T) {
+func TestValidateDaysAgo_Valid(t *testing.T) {
 	tests := []struct {
-		name    string
-		daysAgo string
-		want    int
+		name string
+		param string
+		want int
 	}{
-		{"Today (empty)", "", 0},
-		{"Today (explicit)", "0", 0},
+		{"Empty (default)", "", 0},
+		{"Today", "0", 0},
 		{"Yesterday", "1", 1},
 		{"Last week", "7", 7},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result, err := validateDaysAgo(tt.daysAgo)
+			result, err := validateDaysAgo(tt.param)
 			if err != nil {
-				t.Errorf("Expected no error for valid daysAgo, got: %v", err)
+				t.Errorf("Unexpected error: %v", err)
 			}
 			if result != tt.want {
-				t.Errorf("Expected %d, got %d", tt.want, result)
+				t.Errorf("Got %d, want %d", result, tt.want)
 			}
 		})
 	}
 }
 
-// TestHandleGetColors_InvalidLocale tests invalid locale values
-func TestHandleGetColors_InvalidLocale(t *testing.T) {
-	tmpDir := t.TempDir()
-	requestCache, _ := cache.NewRequestCache(tmpDir)
-	analysisCache, _ := cache.NewAnalysisCache(tmpDir)
+// --- region validation ---
 
+func TestValidateRegion(t *testing.T) {
 	app := &App{
-		requestCache:  requestCache,
-		analysisCache: analysisCache,
-		bingClient:    bing.NewClient(defaultLocale),
+		allowedRegions: []string{"global", "en-US", "ja-JP"},
+		defaultRegion:  "global",
 	}
 
 	tests := []struct {
-		name   string
-		locale string
+		name    string
+		param   string
+		want    string
+		wantErr bool
 	}{
-		{"Random text", "invalid"},
-		{"Wrong format", "en_US"},
-		{"Unsupported", "xx-XX"},
+		{"Empty returns default", "", "global", false},
+		{"Global allowed", "global", "global", false},
+		{"en-US allowed", "en-US", "en-US", false},
+		{"ja-JP allowed", "ja-JP", "ja-JP", false},
+		{"de-DE not allowed", "de-DE", "", true},
+		{"Random text", "foobar", "", true},
+		{"Whitespace trimmed", "  global  ", "global", false},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			req := httptest.NewRequest("GET", "/api/colors?locale="+tt.locale, nil)
-			w := httptest.NewRecorder()
-
-			app.handleGetColors(w, req)
-
-			if w.Code != http.StatusBadRequest {
-				t.Errorf("Expected status 400 for invalid locale, got %d", w.Code)
+			got, err := app.validateRegion(tt.param)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateRegion(%q) error = %v, wantErr %v", tt.param, err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("validateRegion(%q) = %q, want %q", tt.param, got, tt.want)
 			}
 		})
 	}
 }
 
-// TestHandleGetColors_ValidLocales tests that all allowed locales are accepted
-func TestHandleGetColors_ValidLocales(t *testing.T) {
-	validLocales := []string{
-		"en-US", "en-GB", "en-CA", "en-AU", "en-IN",
-		"ja-JP", "zh-CN", "zh-TW", "de-DE", "fr-FR",
-		"es-ES", "it-IT", "pt-BR", "ru-RU", "ko-KR",
-	}
+// --- language validation ---
 
-	for _, locale := range validLocales {
-		t.Run(locale, func(t *testing.T) {
-			found := false
-			for _, allowed := range allowedLocales {
-				if locale == allowed {
-					found = true
-					break
-				}
-			}
-			if !found {
-				t.Errorf("Locale %s should be allowed but is not in allowedLocales slice", locale)
-			}
-		})
-	}
-}
-
-// TestHandleGetColors_WrongMethod tests that non-GET methods are rejected
-func TestHandleGetColors_WrongMethod(t *testing.T) {
-	tmpDir := t.TempDir()
-	requestCache, _ := cache.NewRequestCache(tmpDir)
-	analysisCache, _ := cache.NewAnalysisCache(tmpDir)
-
+func TestValidateLanguage(t *testing.T) {
 	app := &App{
-		requestCache:  requestCache,
-		analysisCache: analysisCache,
-		bingClient:    bing.NewClient(defaultLocale),
+		allowedLanguages: []string{"English", "Japanese"},
+		defaultLanguage:  "English",
 	}
 
-	methods := []string{"POST", "PUT", "DELETE", "PATCH"}
+	tests := []struct {
+		name    string
+		param   string
+		want    string
+		wantErr bool
+	}{
+		{"Empty returns default", "", "English", false},
+		{"English allowed", "English", "English", false},
+		{"Japanese allowed", "Japanese", "Japanese", false},
+		{"Case insensitive", "english", "English", false},
+		{"Case insensitive JP", "japanese", "Japanese", false},
+		{"German not allowed", "German", "", true},
+		{"Random text", "foobar", "", true},
+	}
 
-	for _, method := range methods {
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got, err := app.validateLanguage(tt.param)
+			if (err != nil) != tt.wantErr {
+				t.Errorf("validateLanguage(%q) error = %v, wantErr %v", tt.param, err, tt.wantErr)
+				return
+			}
+			if got != tt.want {
+				t.Errorf("validateLanguage(%q) = %q, want %q", tt.param, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestValidateLanguage_NoLanguagesConfigured(t *testing.T) {
+	app := &App{
+		allowedLanguages: nil,
+		defaultLanguage:  "",
+	}
+
+	// Empty param should return empty (no translation)
+	got, err := app.validateLanguage("")
+	if err != nil {
+		t.Errorf("Empty param with no languages should not error, got: %v", err)
+	}
+	if got != "" {
+		t.Errorf("Expected empty string, got %q", got)
+	}
+
+	// Explicit language should be rejected
+	_, err = app.validateLanguage("English")
+	if err == nil {
+		t.Error("Expected error when requesting language on instance with no languages configured")
+	}
+}
+
+// --- handler method checks ---
+
+func TestV1_WrongMethod(t *testing.T) {
+	app := newTestApp(t)
+
+	for _, method := range []string{"POST", "PUT", "DELETE", "PATCH"} {
 		t.Run(method, func(t *testing.T) {
 			req := httptest.NewRequest(method, "/api/colors", nil)
 			w := httptest.NewRecorder()
-
 			app.handleGetColors(w, req)
-
 			if w.Code != http.StatusMethodNotAllowed {
-				t.Errorf("Expected status 405 for %s method, got %d", method, w.Code)
+				t.Errorf("Expected 405, got %d", w.Code)
 			}
 		})
 	}
 }
 
-// TestHandleHealth tests the health check endpoint
+func TestV2_WrongMethod(t *testing.T) {
+	app := newTestApp(t)
+
+	req := httptest.NewRequest("POST", "/api/v2/colors", nil)
+	w := httptest.NewRecorder()
+	app.handleGetColorsV2(w, req)
+	if w.Code != http.StatusMethodNotAllowed {
+		t.Errorf("Expected 405, got %d", w.Code)
+	}
+}
+
+func TestV2_InvalidDaysAgo(t *testing.T) {
+	app := newTestApp(t)
+
+	req := httptest.NewRequest("GET", "/api/v2/colors?daysAgo=invalid", nil)
+	w := httptest.NewRecorder()
+	app.handleGetColorsV2(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400, got %d", w.Code)
+	}
+}
+
+func TestV2_DisallowedRegion(t *testing.T) {
+	app := newTestApp(t)
+
+	req := httptest.NewRequest("GET", "/api/v2/colors?region=de-DE", nil)
+	w := httptest.NewRecorder()
+	app.handleGetColorsV2(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400, got %d", w.Code)
+	}
+}
+
+func TestV2_DisallowedLanguage(t *testing.T) {
+	app := newTestApp(t)
+
+	req := httptest.NewRequest("GET", "/api/v2/colors?language=Japanese", nil)
+	w := httptest.NewRecorder()
+	app.handleGetColorsV2(w, req)
+	if w.Code != http.StatusBadRequest {
+		t.Errorf("Expected 400, got %d", w.Code)
+	}
+}
+
+// --- health endpoint ---
+
 func TestHandleHealth(t *testing.T) {
 	req := httptest.NewRequest("GET", "/health", nil)
 	w := httptest.NewRecorder()
@@ -187,16 +243,15 @@ func TestHandleHealth(t *testing.T) {
 	handleHealth(w, req)
 
 	if w.Code != http.StatusOK {
-		t.Errorf("Expected status 200, got %d", w.Code)
+		t.Errorf("Expected 200, got %d", w.Code)
 	}
-
-	contentType := w.Header().Get("Content-Type")
-	if contentType != "application/json" {
-		t.Errorf("Expected Content-Type application/json, got %s", contentType)
+	if ct := w.Header().Get("Content-Type"); ct != "application/json" {
+		t.Errorf("Expected application/json, got %s", ct)
 	}
 }
 
-// TestConcurrency_ImageHashMutex tests that mutex is keyed by image hash, not daysAgo+locale
+// --- cache sharing ---
+
 func TestConcurrency_ImageHashMutex(t *testing.T) {
 	tmpDir := t.TempDir()
 	analysisCache, err := cache.NewAnalysisCache(tmpDir)
@@ -204,86 +259,75 @@ func TestConcurrency_ImageHashMutex(t *testing.T) {
 		t.Fatalf("Failed to create analysis cache: %v", err)
 	}
 
-	imageHash := "hash123456789012345678901234567890123456789012345678901234567"
+	hash := "hash123456789012345678901234567890123456789012345678901234567"
 
-	// Get mutex twice for same image hash
-	mu1 := analysisCache.GetMutex(imageHash)
-	mu2 := analysisCache.GetMutex(imageHash)
-
-	// Should be the exact same mutex instance
+	mu1 := analysisCache.GetMutex(hash)
+	mu2 := analysisCache.GetMutex(hash)
 	if mu1 != mu2 {
-		t.Error("Expected same mutex instance for same image hash")
+		t.Error("Same hash should return same mutex")
 	}
 
-	// Different image hash should get different mutex
 	mu3 := analysisCache.GetMutex("different890123456789012345678901234567890123456789012345678")
 	if mu1 == mu3 {
-		t.Error("Expected different mutex instance for different image hash")
+		t.Error("Different hash should return different mutex")
 	}
 }
 
-// TestConcurrency_TwoLevelCacheSystem tests the new two-level cache behavior
-func TestConcurrency_TwoLevelCacheSystem(t *testing.T) {
+func TestConcurrency_AnalysisCacheSharedAcrossRegions(t *testing.T) {
 	tmpDir := t.TempDir()
-	requestCache, err := cache.NewRequestCache(tmpDir)
-	if err != nil {
-		t.Fatalf("Failed to create request cache: %v", err)
-	}
+	requestCache, _ := cache.NewRequestCache(tmpDir)
+	analysisCache, _ := cache.NewAnalysisCache(tmpDir)
 
-	analysisCache, err := cache.NewAnalysisCache(tmpDir)
-	if err != nil {
-		t.Fatalf("Failed to create analysis cache: %v", err)
-	}
-
-	daysAgo := 0
 	imageHash := "shared789012345678901234567890123456789012345678901234567890"
-
-	// Simulate: Same image used by both en-US and ja-JP
 	imageURLs := map[string]string{"1920x1080": "https://bing.com/image.jpg"}
-	colors := map[string]interface{}{"highlight": "#FF0000", "primary": "#00FF00"}
-	title := "Test Title"
-	copyright := "Test Copyright © Photographer"
-	copyrightLink := "https://example.com/test"
-	startDate := "20251019"
-	fullStartDate := "202510190700"
-	endDate := "20251020"
-	expiresAt := getNextHourBoundary()
+	colors := map[string]interface{}{"gradient_from": "#FF0000"}
 
 	// Store analysis once (shared)
-	err = analysisCache.Set(imageHash, colors)
-	if err != nil {
+	if err := analysisCache.Set(imageHash, colors); err != nil {
 		t.Fatalf("Failed to set analysis: %v", err)
 	}
 
-	// Store request metadata for en-US
-	err = requestCache.Set("en-US", daysAgo, imageHash, imageURLs, title, copyright, copyrightLink, startDate, fullStartDate, endDate, expiresAt)
-	if err != nil {
-		t.Fatalf("Failed to set en-US request: %v", err)
+	// Store request metadata for two different regions pointing to same image
+	for _, region := range []string{"global", "en-US"} {
+		if err := requestCache.Set(&cache.RequestEntry{
+			Locale:    region,
+			DaysAgo:   0,
+			ImageHash: imageHash,
+			ImageURLs: imageURLs,
+			Title:     "Test",
+			ExpiresAt: getNextHourBoundary(),
+		}); err != nil {
+			t.Fatalf("Failed to set request for %s: %v", region, err)
+		}
 	}
 
-	// Store request metadata for ja-JP (same image hash!)
-	err = requestCache.Set("ja-JP", daysAgo, imageHash, imageURLs, title, copyright, copyrightLink, startDate, fullStartDate, endDate, expiresAt)
-	if err != nil {
-		t.Fatalf("Failed to set ja-JP request: %v", err)
+	// Both should resolve to the same analysis
+	reqGlobal := requestCache.Get("global", 0)
+	reqEnUS := requestCache.Get("en-US", 0)
+
+	if reqGlobal.ImageHash != reqEnUS.ImageHash {
+		t.Error("Both regions should share the same image hash")
 	}
 
-	// Both requests should point to same analysis
-	reqUS := requestCache.Get("en-US", daysAgo)
-	reqJP := requestCache.Get("ja-JP", daysAgo)
+	a1 := analysisCache.Get(reqGlobal.ImageHash)
+	a2 := analysisCache.Get(reqEnUS.ImageHash)
+	if a1 != a2 {
+		t.Error("Both regions should get the same analysis instance")
+	}
+}
 
-	if reqUS == nil || reqJP == nil {
-		t.Fatal("Expected both request entries to exist")
+// --- parseCSVEnv ---
+
+func TestParseCSVEnv(t *testing.T) {
+	// Test fallback when env var is not set
+	result := parseCSVEnv("NONEXISTENT_VAR_FOR_TEST_12345", "default")
+	if len(result) != 1 || result[0] != "default" {
+		t.Errorf("Expected [default], got %v", result)
 	}
 
-	if reqUS.ImageHash != reqJP.ImageHash {
-		t.Error("Expected both requests to share same image hash")
-	}
-
-	// Both should get same analysis
-	analysisUS := analysisCache.Get(reqUS.ImageHash)
-	analysisJP := analysisCache.Get(reqJP.ImageHash)
-
-	if analysisUS != analysisJP {
-		t.Error("Expected both locales to get same analysis instance")
+	// Test empty fallback
+	result = parseCSVEnv("NONEXISTENT_VAR_FOR_TEST_12345", "")
+	if result != nil {
+		t.Errorf("Expected nil, got %v", result)
 	}
 }

@@ -23,6 +23,8 @@ type RequestEntry struct {
 	StartDate     string            `json:"startdate"`     // Format: YYYYMMDD (e.g., "20251019")
 	FullStartDate string            `json:"fullstartdate"` // Format: YYYYMMDDHHMM (e.g., "202510190700")
 	EndDate       string            `json:"enddate"`       // Format: YYYYMMDD (e.g., "20251020")
+	BaseImageName string            `json:"base_image_name,omitempty"` // e.g., "OHR.BalearesDay"
+	EnUSMatch     bool              `json:"en_us_match,omitempty"`     // whether en-US market had this image (global mode only)
 	ExpiresAt     time.Time         `json:"expires_at"`
 }
 
@@ -61,25 +63,11 @@ func (c *RequestCache) Get(locale string, daysAgo int) *RequestEntry {
 }
 
 // Set stores a request entry and persists to disk
-func (c *RequestCache) Set(locale string, daysAgo int, imageHash string, imageURLs map[string]string, title, copyright, copyrightLink, startDate, fullStartDate, endDate string, expiresAt time.Time) error {
+func (c *RequestCache) Set(entry *RequestEntry) error {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 
-	entry := &RequestEntry{
-		Locale:        locale,
-		DaysAgo:       daysAgo,
-		ImageHash:     imageHash,
-		ImageURLs:     imageURLs,
-		Title:         title,
-		Copyright:     copyright,
-		CopyrightLink: copyrightLink,
-		StartDate:     startDate,
-		FullStartDate: fullStartDate,
-		EndDate:       endDate,
-		ExpiresAt:     expiresAt,
-	}
-
-	key := c.makeKey(locale, daysAgo)
+	key := c.makeKey(entry.Locale, entry.DaysAgo)
 	c.data[key] = entry
 
 	// Persist to disk
