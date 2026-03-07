@@ -13,6 +13,8 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -285,6 +287,12 @@ func (a *Analyzer) AnalyzeColors(imageData []byte, imageHash string, title strin
 		return nil, fmt.Errorf("failed to parse colors: %w", err)
 	}
 
+	// Validate and normalize color values to prevent malformed data from reaching clients
+	colors, err = ValidateColors(colors)
+	if err != nil {
+		return nil, fmt.Errorf("AI returned invalid color data: %w", err)
+	}
+
 	// Save debug response (log error but don't fail the request)
 	if debugErr := a.saveDebugResponse(imageHash, title, len(imageData), &apiResp, colors); debugErr != nil {
 		slog.Error("Warning: Failed to save debug response", "error", debugErr)
@@ -403,6 +411,98 @@ func (a *Analyzer) parseColorsFromResponse(content string) (map[string]any, erro
 	}
 
 	return nil, fmt.Errorf("could not extract colors from response: %s", content)
+}
+
+// hexColorRegex matches a 6-digit hex color code like "#FF8800"
+var hexColorRegex = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
+
+// ValidateColors checks that the AI-returned color map contains valid,
+// well-formed values for gradient_from, gradient_to, and gradient_angle.
+// It normalizes types (e.g. float64 angle → int) and returns an error if
+// any required field is missing or cannot be fixed.
+// Exported so it can also be used to validate cached entries on load.
+func ValidateColors(colors map[string]any) (map[string]any, error) {
+	// --- gradient_from ---
+	from, err := extractHexColor(colors, "gradient_from")
+	if err != nil {
+		return nil, fmt.Errorf("gradient_from: %w", err)
+	}
+	colors["gradient_from"] = from
+
+	// --- gradient_to ---
+	to, err := extractHexColor(colors, "gradient_to")
+	if err != nil {
+		return nil, fmt.Errorf("gradient_to: %w", err)
+	}
+	colors["gradient_to"] = to
+
+	// --- gradient_angle ---
+	angle, err := extractAngle(colors, "gradient_angle")
+	if err != nil {
+		return nil, fmt.Errorf("gradient_angle: %w", err)
+	}
+	colors["gradient_angle"] = angle
+
+	return colors, nil
+}
+
+// extractHexColor pulls a hex color string from the map, normalizing to uppercase "#RRGGBB".
+// Handles: string "#abc123", string "abc123" (missing #), nil/null.
+func extractHexColor(m map[string]any, key string) (string, error) {
+	v, ok := m[key]
+	if !ok || v == nil {
+		return "", fmt.Errorf("missing or null")
+	}
+
+	s, ok := v.(string)
+	if !ok {
+		return "", fmt.Errorf("expected string, got %T", v)
+	}
+
+	s = strings.TrimSpace(s)
+
+	// Add missing # prefix
+	if len(s) == 6 && !strings.HasPrefix(s, "#") {
+		s = "#" + s
+	}
+
+	s = strings.ToUpper(s)
+
+	if !hexColorRegex.MatchString(s) {
+		return "", fmt.Errorf("invalid hex color %q", s)
+	}
+
+	return s, nil
+}
+
+// extractAngle pulls a numeric angle (0–360) from the map.
+// Handles: float64 (from JSON), json.Number, string "135", nil/null.
+func extractAngle(m map[string]any, key string) (int, error) {
+	v, ok := m[key]
+	if !ok || v == nil {
+		return 0, fmt.Errorf("missing or null")
+	}
+
+	switch val := v.(type) {
+	case float64:
+		return int(val), nil
+	case int:
+		return val, nil
+	case json.Number:
+		n, err := val.Int64()
+		if err != nil {
+			return 0, fmt.Errorf("not an integer: %w", err)
+		}
+		return int(n), nil
+	case string:
+		n, err := strconv.Atoi(strings.TrimSpace(val))
+		if err != nil {
+			return 0, fmt.Errorf("not a numeric string: %w", err)
+		}
+		return n, nil
+	default:
+		return 0, fmt.Errorf("unexpected type %T", v)
+	}
 }
 
 // resizeImage resizes an image to a maximum height while maintaining aspect ratio

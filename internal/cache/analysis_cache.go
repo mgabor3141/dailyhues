@@ -6,9 +6,12 @@ import (
 	"log/slog"
 	"os"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"sync"
 )
+
+var hexColorRegex = regexp.MustCompile(`^#[0-9a-fA-F]{6}$`)
 
 // AnalysisEntry stores AI analysis results for a wallpaper image
 type AnalysisEntry struct {
@@ -92,6 +95,13 @@ func (c *AnalysisCache) LoadAll() error {
 			continue
 		}
 
+		// Validate color data on load — skip entries with bad data
+		if err := entry.ValidateColors(); err != nil {
+			slog.Warn("Skipping cached analysis with invalid colors",
+				"hash", entry.ImageHash, "file", file.Name(), "error", err)
+			continue
+		}
+
 		c.data[entry.ImageHash] = &entry
 		loaded++
 	}
@@ -115,6 +125,39 @@ func (c *AnalysisCache) saveToFile(entry *AnalysisEntry) error {
 
 	if err := os.WriteFile(filename, data, 0644); err != nil {
 		return fmt.Errorf("failed to write analysis cache file: %w", err)
+	}
+
+	return nil
+}
+
+// ValidateColors performs a lightweight check that the cached color data
+// contains the required fields with plausible types. This catches null/missing
+// values that would produce broken client configs.
+func (e *AnalysisEntry) ValidateColors() error {
+	for _, key := range []string{"gradient_from", "gradient_to"} {
+		v, ok := e.Colors[key]
+		if !ok || v == nil {
+			return fmt.Errorf("%s is missing or null", key)
+		}
+		s, ok := v.(string)
+		if !ok {
+			return fmt.Errorf("%s: expected string, got %T", key, v)
+		}
+		if !hexColorRegex.MatchString(strings.ToUpper(strings.TrimSpace(s))) {
+			return fmt.Errorf("%s: invalid hex color %q", key, s)
+		}
+	}
+
+	v, ok := e.Colors["gradient_angle"]
+	if !ok || v == nil {
+		return fmt.Errorf("gradient_angle is missing or null")
+	}
+	// json.Unmarshal into any produces float64 for numbers
+	switch v.(type) {
+	case float64, int, json.Number:
+		// ok
+	default:
+		return fmt.Errorf("gradient_angle: expected number, got %T", v)
 	}
 
 	return nil

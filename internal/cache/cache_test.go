@@ -337,7 +337,7 @@ func TestAnalysisCache_Persistence(t *testing.T) {
 	}
 
 	imageHash := "persistent1234567890123456789012345678901234567890123456789012"
-	colors := map[string]any{"highlight": "#aabbcc", "primary": "#ddeeff"}
+	colors := map[string]any{"gradient_from": "#AABBCC", "gradient_to": "#DDEEFF", "gradient_angle": float64(135)}
 
 	err = cache1.Set(imageHash, colors)
 	if err != nil {
